@@ -4,8 +4,10 @@ server:
 spring:
   application:
     name: telemetry-collector
+
+collector:
   kafka:
-    producer:
-      bootstrap-servers: localhost:9092
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: ru.yandex.practicum.telemetry.collector.serialization.AvroSerializer
+    bootstrap-servers: localhost:9092
+    topics:
+      sensors: telemetry.sensors.v1
+      hubs: telemetry.hubs.v1
