@@ -13,6 +13,7 @@ import ru.yandex.practicum.telemetry.collector.service.EventService;
 
 @Slf4j
 @RestController
+@RequestMapping("/events")
 @RequiredArgsConstructor
 public class CollectorController {
     private final EventService eventService;
