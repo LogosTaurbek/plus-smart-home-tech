@@ -114,11 +114,12 @@ public class AggregationStarter {
     private Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
         String hubId = event.getHubId().toString();
         SensorsSnapshotAvro oldSnapshot = snapshots.get(hubId);
-
         String sensorId = event.getId().toString();
 
+        Map<String, SensorStateAvro> stateMap = getMutableStateMap(oldSnapshot);
+
         if (oldSnapshot != null) {
-            SensorStateAvro oldState = oldSnapshot.getSensorsState().get(sensorId);
+            SensorStateAvro oldState = stateMap.get(sensorId);
             if (oldState != null) {
                 if (oldState.getTimestamp().isAfter(event.getTimestamp()) ||
                         oldState.getData().equals(event.getPayload())) {
@@ -132,22 +133,12 @@ public class AggregationStarter {
                 .setData(event.getPayload())
                 .build();
 
-        Map<String, SensorStateAvro> newStateMap;
-        Instant snapshotTimestamp = event.getTimestamp();
-        if (oldSnapshot != null) {
-            newStateMap = new HashMap<>(oldSnapshot.getSensorsState());
-            if (oldSnapshot.getTimestamp().isAfter(snapshotTimestamp)) {
-                snapshotTimestamp = oldSnapshot.getTimestamp();
-            }
-        } else {
-            newStateMap = new HashMap<>();
-        }
-        newStateMap.put(sensorId, newState);
+        stateMap.put(sensorId, newState);
 
         SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
                 .setHubId(hubId)
-                .setTimestamp(snapshotTimestamp)
-                .setSensorsState(newStateMap)
+                .setTimestamp(event.getTimestamp()) // Follow pseudo-code: use event timestamp
+                .setSensorsState(stateMap)
                 .build();
 
         snapshots.put(hubId, newSnapshot);
@@ -155,25 +146,36 @@ public class AggregationStarter {
     }
 
     private Optional<SensorsSnapshotAvro> handleHubEvent(HubEventAvro event) {
+        String hubId = event.getHubId().toString();
         if (event.getPayload() instanceof DeviceRemovedEventAvro) {
             DeviceRemovedEventAvro removedEvent = (DeviceRemovedEventAvro) event.getPayload();
-            String hubId = event.getHubId().toString();
+            String sensorId = removedEvent.getId().toString();
             SensorsSnapshotAvro oldSnapshot = snapshots.get(hubId);
 
-            if (oldSnapshot != null && oldSnapshot.getSensorsState().containsKey(removedEvent.getId().toString())) {
-                Map<String, SensorStateAvro> newStateMap = new HashMap<>(oldSnapshot.getSensorsState());
-                newStateMap.remove(removedEvent.getId().toString());
+            if (oldSnapshot != null) {
+                Map<String, SensorStateAvro> stateMap = getMutableStateMap(oldSnapshot);
+                if (stateMap.containsKey(sensorId)) {
+                    stateMap.remove(sensorId);
+                    SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
+                            .setHubId(hubId)
+                            .setTimestamp(event.getTimestamp())
+                            .setSensorsState(stateMap)
+                            .build();
 
-                SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
-                        .setHubId(hubId)
-                        .setTimestamp(event.getTimestamp())
-                        .setSensorsState(newStateMap)
-                        .build();
-
-                snapshots.put(hubId, newSnapshot);
-                return Optional.of(newSnapshot);
+                    snapshots.put(hubId, newSnapshot);
+                    return Optional.of(newSnapshot);
+                }
             }
         }
         return Optional.empty();
+    }
+
+    private Map<String, SensorStateAvro> getMutableStateMap(SensorsSnapshotAvro snapshot) {
+        Map<String, SensorStateAvro> stateMap = new HashMap<>();
+        if (snapshot != null && snapshot.getSensorsState() != null) {
+            // Ensure keys are converted to String to avoid Utf8/String mismatch
+            snapshot.getSensorsState().forEach((k, v) -> stateMap.put(k.toString(), v));
+        }
+        return stateMap;
     }
 }
