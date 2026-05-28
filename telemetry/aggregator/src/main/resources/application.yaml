@@ -1,0 +1,8 @@
+aggregator:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: telemetry-aggregator
+      sensors-topic: telemetry.sensors.v1
+    producer:
+      snapshots-topic: telemetry.snapshots.v1
