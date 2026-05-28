@@ -22,6 +22,7 @@ import ru.yandex.practicum.telemetry.aggregator.serialization.AvroSerializer;
 import ru.yandex.practicum.telemetry.aggregator.serialization.SensorEventDeserializer;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -68,8 +69,14 @@ public class AggregationStarter {
                                 kafkaConfig.getProducer().getSnapshotsTopic(),
                                 snapshot.getHubId(),
                                 snapshot
-                        ));
-                        log.info("Sent snapshot for hub: {}", snapshot.getHubId());
+                        ), (metadata, exception) -> {
+                            if (exception != null) {
+                                log.error("Error sending snapshot to Kafka", exception);
+                            } else {
+                                log.info("Sent snapshot for hub: {} to topic: {} partition: {} offset: {}",
+                                        snapshot.getHubId(), metadata.topic(), metadata.partition(), metadata.offset());
+                            }
+                        });
                     });
                 }
                 producer.flush();
@@ -83,6 +90,8 @@ public class AggregationStarter {
             try {
                 producer.flush();
                 consumer.commitSync();
+            } catch (Exception e) {
+                log.error("Error during final flush/commit", e);
             } finally {
                 log.info("Закрываем консьюмер");
                 consumer.close();
@@ -114,8 +123,12 @@ public class AggregationStarter {
                 .build();
 
         Map<String, SensorStateAvro> newStateMap;
+        Instant snapshotTimestamp = event.getTimestamp();
         if (oldSnapshot != null) {
             newStateMap = new HashMap<>(oldSnapshot.getSensorsState());
+            if (oldSnapshot.getTimestamp().isAfter(snapshotTimestamp)) {
+                snapshotTimestamp = oldSnapshot.getTimestamp();
+            }
         } else {
             newStateMap = new HashMap<>();
         }
@@ -123,7 +136,7 @@ public class AggregationStarter {
 
         SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
                 .setHubId(hubId)
-                .setTimestamp(event.getTimestamp())
+                .setTimestamp(snapshotTimestamp)
                 .setSensorsState(newStateMap)
                 .build();
 
