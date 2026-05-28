@@ -4,5 +4,6 @@ aggregator:
     consumer:
       group-id: telemetry-aggregator
       sensors-topic: telemetry.sensors.v1
+      hubs-topic: telemetry.hubs.v1
     producer:
       snapshots-topic: telemetry.snapshots.v1

@@ -19,6 +19,7 @@ public class KafkaConfig {
     public static class ConsumerConfig {
         private String groupId;
         private String sensorsTopic;
+        private String hubsTopic;
     }
 
     @Getter
