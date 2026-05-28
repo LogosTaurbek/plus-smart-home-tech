@@ -94,22 +94,17 @@ public class AggregationStarter {
 
     private Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
         String hubId = event.getHubId().toString();
-        SensorsSnapshotAvro snapshot = snapshots.get(hubId);
-        if (snapshot == null) {
-            snapshot = SensorsSnapshotAvro.newBuilder()
-                    .setHubId(hubId)
-                    .setTimestamp(event.getTimestamp())
-                    .setSensorsState(new HashMap<>())
-                    .build();
-            snapshots.put(hubId, snapshot);
-        }
+        SensorsSnapshotAvro oldSnapshot = snapshots.get(hubId);
 
         String sensorId = event.getId().toString();
-        SensorStateAvro oldState = snapshot.getSensorsState().get(sensorId);
-        if (oldState != null) {
-            if (!event.getTimestamp().isAfter(oldState.getTimestamp()) &&
-                    oldState.getData().equals(event.getPayload())) {
-                return Optional.empty();
+
+        if (oldSnapshot != null) {
+            SensorStateAvro oldState = oldSnapshot.getSensorsState().get(sensorId);
+            if (oldState != null) {
+                if (oldState.getTimestamp().isAfter(event.getTimestamp()) ||
+                        oldState.getData().equals(event.getPayload())) {
+                    return Optional.empty();
+                }
             }
         }
 
@@ -118,9 +113,21 @@ public class AggregationStarter {
                 .setData(event.getPayload())
                 .build();
 
-        snapshot.getSensorsState().put(sensorId, newState);
-        snapshot.setTimestamp(event.getTimestamp());
+        Map<String, SensorStateAvro> newStateMap;
+        if (oldSnapshot != null) {
+            newStateMap = new HashMap<>(oldSnapshot.getSensorsState());
+        } else {
+            newStateMap = new HashMap<>();
+        }
+        newStateMap.put(sensorId, newState);
 
-        return Optional.of(snapshot);
+        SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
+                .setHubId(hubId)
+                .setTimestamp(event.getTimestamp())
+                .setSensorsState(newStateMap)
+                .build();
+
+        snapshots.put(hubId, newSnapshot);
+        return Optional.of(newSnapshot);
     }
 }
