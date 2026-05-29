@@ -150,7 +150,6 @@ public class EventServiceImpl implements EventService {
             writer.write(avro, encoder);
             encoder.flush();
             producer.send(new ProducerRecord<>(topic, key, out.toByteArray()));
-            log.debug("Sent event to Kafka: topic={}, key={}", topic, key);
         } catch (IOException e) {
             throw new RuntimeException("Ошибка сериализации Avro", e);
         }

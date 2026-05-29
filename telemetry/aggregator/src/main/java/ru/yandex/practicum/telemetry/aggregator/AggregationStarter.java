@@ -93,7 +93,6 @@ public class AggregationStarter {
                         .build()
         );
 
-        // Ensure we are dealing with String keys in the state map
         SensorStateAvro oldState = snapshot.getSensorsState().get(sensorId);
 
         if (oldState != null) {
