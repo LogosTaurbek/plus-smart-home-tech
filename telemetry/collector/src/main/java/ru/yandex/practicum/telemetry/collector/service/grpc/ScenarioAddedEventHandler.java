@@ -1,6 +1,7 @@
 package ru.yandex.practicum.telemetry.collector.service.grpc;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.grpc.telemetry.event.HubEventProto;
 import ru.yandex.practicum.grpc.telemetry.event.ScenarioAddedEventProto;
@@ -11,6 +12,7 @@ import ru.yandex.practicum.telemetry.collector.service.KafkaEventProducer;
 import java.time.Instant;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ScenarioAddedEventHandler implements HubEventHandler {
@@ -24,7 +26,8 @@ public class ScenarioAddedEventHandler implements HubEventHandler {
     @Override
     public void handle(HubEventProto event) {
         ScenarioAddedEventProto proto = event.getScenarioAdded();
-        
+        log.info("Handling SCENARIO_ADDED for hub: {}, scenario: {}", event.getHubId(), proto.getId());
+
         ScenarioAddedEventAvro avro = ScenarioAddedEventAvro.newBuilder()
                 .setName(proto.getId())
                 .setConditions(proto.getConditionsList().stream()
@@ -33,7 +36,7 @@ public class ScenarioAddedEventHandler implements HubEventHandler {
                                     .setSensorId(c.getSensorId())
                                     .setType(ConditionTypeAvro.valueOf(c.getType().name()))
                                     .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()));
-                            
+
                             if (c.getValueCase() == ScenarioConditionProto.ValueCase.INT_VALUE) {
                                 builder.setValue(c.getIntValue());
                             } else if (c.getValueCase() == ScenarioConditionProto.ValueCase.BOOL_VALUE) {

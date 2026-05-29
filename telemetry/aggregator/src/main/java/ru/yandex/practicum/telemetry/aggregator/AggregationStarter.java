@@ -64,7 +64,7 @@ public class AggregationStarter {
                     kafkaConfig.getConsumer().getSensorsTopic(),
                     kafkaConfig.getConsumer().getHubsTopic()
             ));
-            log.info("Subscribed to topics: {}, {}",
+            log.info("Aggregator started. Subscribed to topics: {}, {}",
                     kafkaConfig.getConsumer().getSensorsTopic(),
                     kafkaConfig.getConsumer().getHubsTopic());
 
@@ -77,9 +77,13 @@ public class AggregationStarter {
                     try {
                         if (record.topic().equals(kafkaConfig.getConsumer().getSensorsTopic())) {
                             SensorEventAvro event = sensorEventDeserializer.deserialize(record.topic(), record.value());
+                            log.debug("Received sensor event: hub={}, sensor={}, type={}",
+                                    event.getHubId(), event.getId(), event.getPayload().getClass().getSimpleName());
                             updateState(event).ifPresent(snapshot -> sendSnapshot(producer, snapshot));
                         } else if (record.topic().equals(kafkaConfig.getConsumer().getHubsTopic())) {
                             HubEventAvro event = hubEventDeserializer.deserialize(record.topic(), record.value());
+                            log.debug("Received hub event: hub={}, type={}",
+                                    event.getHubId(), event.getPayload().getClass().getSimpleName());
                             handleHubEvent(event).ifPresent(snapshot -> sendSnapshot(producer, snapshot));
                         }
                     } catch (Exception e) {
@@ -92,7 +96,7 @@ public class AggregationStarter {
         } catch (WakeupException ignored) {
             // ignore
         } catch (Exception e) {
-            log.error("Ошибка во время обработки событий от датчиков", e);
+            log.error("Unexpected error in Aggregator loop", e);
         }
     }
 
@@ -103,26 +107,27 @@ public class AggregationStarter {
                 snapshot
         ), (metadata, exception) -> {
             if (exception != null) {
-                log.error("Error sending snapshot for hub {} to Kafka", snapshot.getHubId(), exception);
+                log.error("Failed to send snapshot for hub {}", snapshot.getHubId(), exception);
             } else {
-                log.info("Sent snapshot for hub: {} to topic: {} partition: {} offset: {}",
-                        snapshot.getHubId(), metadata.topic(), metadata.partition(), metadata.offset());
+                log.info("Sent snapshot for hub: {} to Kafka. Offset: {}", snapshot.getHubId(), metadata.offset());
             }
         });
     }
 
     private Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
         String hubId = event.getHubId().toString();
-        SensorsSnapshotAvro oldSnapshot = snapshots.get(hubId);
         String sensorId = event.getId().toString();
+        SensorsSnapshotAvro oldSnapshot = snapshots.get(hubId);
 
         Map<String, SensorStateAvro> stateMap = getMutableStateMap(oldSnapshot);
 
         if (oldSnapshot != null) {
             SensorStateAvro oldState = stateMap.get(sensorId);
             if (oldState != null) {
+                // Ignore if older or exactly same data
                 if (oldState.getTimestamp().isAfter(event.getTimestamp()) ||
                         oldState.getData().equals(event.getPayload())) {
+                    log.debug("Deduplicating event for hub={}, sensor={}", hubId, sensorId);
                     return Optional.empty();
                 }
             }
@@ -135,6 +140,7 @@ public class AggregationStarter {
 
         stateMap.put(sensorId, newState);
 
+        // Maintain monotonic hub timestamp
         Instant snapshotTimestamp = event.getTimestamp();
         if (oldSnapshot != null && oldSnapshot.getTimestamp().isAfter(snapshotTimestamp)) {
             snapshotTimestamp = oldSnapshot.getTimestamp();
@@ -162,6 +168,7 @@ public class AggregationStarter {
                 Map<String, SensorStateAvro> stateMap = getMutableStateMap(oldSnapshot);
                 if (stateMap.containsKey(sensorId)) {
                     stateMap.remove(sensorId);
+                    log.info("Removing sensor {} from hub {}", sensorId, hubId);
 
                     Instant snapshotTimestamp = event.getTimestamp();
                     if (oldSnapshot.getTimestamp().isAfter(snapshotTimestamp)) {
@@ -179,13 +186,13 @@ public class AggregationStarter {
                 }
             }
         }
+        // Snapshots are not sent for scenario or registration events as they don't change sensorState
         return Optional.empty();
     }
 
     private Map<String, SensorStateAvro> getMutableStateMap(SensorsSnapshotAvro snapshot) {
         Map<String, SensorStateAvro> stateMap = new HashMap<>();
         if (snapshot != null && snapshot.getSensorsState() != null) {
-            // Ensure keys are converted to String to avoid Utf8/String mismatch
             snapshot.getSensorsState().forEach((k, v) -> stateMap.put(k.toString(), v));
         }
         return stateMap;
