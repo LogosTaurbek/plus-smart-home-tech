@@ -34,9 +34,10 @@ public class ScenarioAddedEventHandler implements HubEventHandler {
                         .map(c -> {
                             ScenarioConditionAvro.Builder builder = ScenarioConditionAvro.newBuilder()
                                     .setSensorId(c.getSensorId())
-                                    .setType(ConditionTypeAvro.valueOf(c.getType().name()))
-                                    .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()));
-
+                                    .setType(ConditionTypeAvro.valueOf(c.getType().name().replace("_SENSOR", "")))
+                                    .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name().replace("_THAN", "_THAN")));
+                            
+                            // Handling oneof value explicitly
                             if (c.getValueCase() == ScenarioConditionProto.ValueCase.INT_VALUE) {
                                 builder.setValue(c.getIntValue());
                             } else if (c.getValueCase() == ScenarioConditionProto.ValueCase.BOOL_VALUE) {
