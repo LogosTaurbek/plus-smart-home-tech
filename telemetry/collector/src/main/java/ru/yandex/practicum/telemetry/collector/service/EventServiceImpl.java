@@ -2,10 +2,21 @@ package ru.yandex.practicum.telemetry.collector.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DatumWriter;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.specific.SpecificDatumWriter;
+import org.apache.avro.specific.SpecificRecordBase;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 import ru.yandex.practicum.telemetry.collector.model.event.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -13,7 +24,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EventServiceImpl implements EventService {
 
-    private final KafkaEventProducer kafkaEventProducer;
+    private final Producer<String, byte[]> producer;
+
+    @Value("${collector.kafka.topics.sensors}")
+    private String sensorsTopic;
+
+    @Value("${collector.kafka.topics.hubs}")
+    private String hubsTopic;
 
     @Override
     public void handleSensorEvent(SensorEvent event) {
@@ -63,7 +80,7 @@ public class EventServiceImpl implements EventService {
                 .setPayload(payload)
                 .build();
 
-        kafkaEventProducer.sendSensorEvent(avro);
+        send(sensorsTopic, event.getHubId(), avro);
     }
 
     @Override
@@ -84,23 +101,25 @@ public class EventServiceImpl implements EventService {
             }
             case SCENARIO_ADDED -> {
                 ScenarioAddedEvent e = (ScenarioAddedEvent) event;
+                List<ScenarioConditionAvro> conditions = e.getConditions().stream()
+                        .map(c -> ScenarioConditionAvro.newBuilder()
+                                .setSensorId(c.getSensorId())
+                                .setType(ConditionTypeAvro.valueOf(c.getType().name()))
+                                .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()))
+                                .setValue(c.getValue())
+                                .build())
+                        .toList();
+                List<DeviceActionAvro> actions = e.getActions().stream()
+                        .map(a -> DeviceActionAvro.newBuilder()
+                                .setSensorId(a.getSensorId())
+                                .setType(ActionTypeAvro.valueOf(a.getType().name()))
+                                .setValue(a.getValue())
+                                .build())
+                        .toList();
                 yield ScenarioAddedEventAvro.newBuilder()
                         .setName(e.getName())
-                        .setConditions(e.getConditions().stream()
-                                .map(c -> ScenarioConditionAvro.newBuilder()
-                                        .setSensorId(c.getSensorId())
-                                        .setType(ConditionTypeAvro.valueOf(c.getType().name()))
-                                        .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()))
-                                        .setValue(c.getValue())
-                                        .build())
-                                .collect(Collectors.toList()))
-                        .setActions(e.getActions().stream()
-                                .map(a -> DeviceActionAvro.newBuilder()
-                                        .setSensorId(a.getSensorId())
-                                        .setType(ActionTypeAvro.valueOf(a.getType().name()))
-                                        .setValue(a.getValue())
-                                        .build())
-                                .collect(Collectors.toList()))
+                        .setConditions(conditions)
+                        .setActions(actions)
                         .build();
             }
             case SCENARIO_REMOVED -> {
@@ -117,6 +136,20 @@ public class EventServiceImpl implements EventService {
                 .setPayload(payload)
                 .build();
 
-        kafkaEventProducer.sendHubEvent(avro);
+        send(hubsTopic, event.getHubId(), avro);
+    }
+
+    private <T extends SpecificRecordBase> void send(String topic, String key, T avro) {
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(out, null);
+            DatumWriter<T> writer = new SpecificDatumWriter<>(avro.getSchema());
+            writer.write(avro, encoder);
+            encoder.flush();
+            producer.send(new ProducerRecord<>(topic, key, out.toByteArray()));
+            log.debug("Sent event to Kafka: topic={}, key={}", topic, key);
+        } catch (IOException e) {
+            throw new RuntimeException("Ошибка сериализации Avro", e);
+        }
     }
 }
