@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.grpc.telemetry.event.HubEventProto;
 import ru.yandex.practicum.grpc.telemetry.event.ScenarioAddedEventProto;
+import ru.yandex.practicum.grpc.telemetry.event.ScenarioConditionProto;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 import ru.yandex.practicum.telemetry.collector.service.KafkaEventProducer;
 
@@ -27,12 +28,19 @@ public class ScenarioAddedEventHandler implements HubEventHandler {
         ScenarioAddedEventAvro avro = ScenarioAddedEventAvro.newBuilder()
                 .setName(proto.getId()) // Mapping Proto id to Avro name as per requirement simplification
                 .setConditions(proto.getConditionsList().stream()
-                        .map(c -> ScenarioConditionAvro.newBuilder()
-                                .setSensorId(c.getSensorId())
-                                .setType(ConditionTypeAvro.valueOf(c.getType().name()))
-                                .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()))
-                                .setValue(c.hasIntValue() ? c.getIntValue() : c.getBoolValue())
-                                .build())
+                        .map(c -> {
+                            ScenarioConditionAvro.Builder builder = ScenarioConditionAvro.newBuilder()
+                                    .setSensorId(c.getSensorId())
+                                    .setType(ConditionTypeAvro.valueOf(c.getType().name()))
+                                    .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()));
+                            
+                            if (c.getValueCase() == ScenarioConditionProto.ValueCase.INT_VALUE) {
+                                builder.setValue(c.getIntValue());
+                            } else if (c.getValueCase() == ScenarioConditionProto.ValueCase.BOOL_VALUE) {
+                                builder.setValue(c.getBoolValue());
+                            }
+                            return builder.build();
+                        })
                         .collect(Collectors.toList()))
                 .setActions(proto.getActionsList().stream()
                         .map(a -> DeviceActionAvro.newBuilder()

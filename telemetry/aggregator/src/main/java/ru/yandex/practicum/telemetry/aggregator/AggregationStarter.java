@@ -148,37 +148,26 @@ public class AggregationStarter {
     private Optional<SensorsSnapshotAvro> handleHubEvent(HubEventAvro event) {
         String hubId = event.getHubId().toString();
         SensorsSnapshotAvro oldSnapshot = snapshots.get(hubId);
-        boolean changed = false;
-
-        Map<String, SensorStateAvro> stateMap = getMutableStateMap(oldSnapshot);
 
         if (event.getPayload() instanceof DeviceRemovedEventAvro) {
             DeviceRemovedEventAvro removedEvent = (DeviceRemovedEventAvro) event.getPayload();
             String sensorId = removedEvent.getId().toString();
-            if (stateMap.containsKey(sensorId)) {
-                stateMap.remove(sensorId);
-                changed = true;
+
+            if (oldSnapshot != null) {
+                Map<String, SensorStateAvro> stateMap = getMutableStateMap(oldSnapshot);
+                if (stateMap.containsKey(sensorId)) {
+                    stateMap.remove(sensorId);
+
+                    SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
+                            .setHubId(hubId)
+                            .setTimestamp(event.getTimestamp())
+                            .setSensorsState(stateMap)
+                            .build();
+
+                    snapshots.put(hubId, newSnapshot);
+                    return Optional.of(newSnapshot);
+                }
             }
-        } else {
-            // Любое другое событие хаба (Added, Scenario и т.д.) считаем изменением состояния хаба,
-            // которое требует обновления таймстемпа снапшота.
-            changed = true;
-        }
-
-        if (changed || oldSnapshot == null) {
-            // Не шлем снапшот с более старым таймстемпом
-            if (oldSnapshot != null && !event.getTimestamp().isAfter(oldSnapshot.getTimestamp())) {
-                return Optional.empty();
-            }
-
-            SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
-                    .setHubId(hubId)
-                    .setTimestamp(event.getTimestamp())
-                    .setSensorsState(stateMap)
-                    .build();
-
-            snapshots.put(hubId, newSnapshot);
-            return Optional.of(newSnapshot);
         }
         return Optional.empty();
     }
