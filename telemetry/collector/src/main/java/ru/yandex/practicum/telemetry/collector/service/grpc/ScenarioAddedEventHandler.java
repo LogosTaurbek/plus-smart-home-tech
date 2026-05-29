@@ -37,9 +37,9 @@ public class ScenarioAddedEventHandler implements HubEventHandler {
                                     .setType(ConditionTypeAvro.valueOf(c.getType().name()))
                                     .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()));
 
-                            if (c.hasIntValue()) {
+                            if (c.getValueCase() == ScenarioConditionProto.ValueCase.INT_VALUE) {
                                 builder.setValue(c.getIntValue());
-                            } else if (c.hasBoolValue()) {
+                            } else if (c.getValueCase() == ScenarioConditionProto.ValueCase.BOOL_VALUE) {
                                 builder.setValue(c.getBoolValue());
                             }
                             return builder.build();
