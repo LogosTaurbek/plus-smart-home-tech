@@ -3,7 +3,6 @@ aggregator:
     bootstrap-servers: localhost:9092
     consumer:
       group-id: telemetry-aggregator
-      sensors-topic: telemetry.sensors.v1
-      hubs-topic: telemetry.hubs.v1
-    producer:
-      snapshots-topic: telemetry.snapshots.v1
+    topics:
+      sensors: telemetry.sensors.v1
+      snapshots: telemetry.snapshots.v1

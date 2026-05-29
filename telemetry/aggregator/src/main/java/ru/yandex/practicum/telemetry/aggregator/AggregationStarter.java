@@ -2,134 +2,103 @@ package ru.yandex.practicum.telemetry.aggregator;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DatumWriter;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.specific.SpecificDatumWriter;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.errors.WakeupException;
-import org.apache.kafka.common.serialization.ByteArrayDeserializer;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import ru.yandex.practicum.kafka.telemetry.event.DeviceRemovedEventAvro;
-import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorStateAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
-import ru.yandex.practicum.telemetry.aggregator.config.KafkaConfig;
-import ru.yandex.practicum.telemetry.aggregator.serialization.AvroSerializer;
-import ru.yandex.practicum.telemetry.aggregator.serialization.HubEventDeserializer;
-import ru.yandex.practicum.telemetry.aggregator.serialization.SensorEventDeserializer;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class AggregationStarter {
-    private final KafkaConfig kafkaConfig;
+
+    private final KafkaConsumer<String, SensorEventAvro> consumer;
+    private final KafkaProducer<String, byte[]> producer;
+
+    @Value("${aggregator.kafka.topics.sensors}")
+    private String sensorsTopic;
+    @Value("${aggregator.kafka.topics.snapshots}")
+    private String snapshotTopic;
+
     private final Map<String, SensorsSnapshotAvro> snapshots = new HashMap<>();
 
     public void start() {
-        Properties consumerProps = new Properties();
-        consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaConfig.getBootstrapServers());
-        consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, kafkaConfig.getConsumer().getGroupId());
-        consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-        consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        consumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-
-        Properties producerProps = new Properties();
-        producerProps.put(org.apache.kafka.clients.producer.ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaConfig.getBootstrapServers());
-        producerProps.put(org.apache.kafka.clients.producer.ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        producerProps.put(org.apache.kafka.clients.producer.ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, AvroSerializer.class);
-
-        SensorEventDeserializer sensorEventDeserializer = new SensorEventDeserializer();
-        HubEventDeserializer hubEventDeserializer = new HubEventDeserializer();
-
-        try (Consumer<String, byte[]> consumer = new KafkaConsumer<>(consumerProps);
-             Producer<String, SensorsSnapshotAvro> producer = new KafkaProducer<>(producerProps)) {
-
-            consumer.subscribe(Arrays.asList(
-                    kafkaConfig.getConsumer().getSensorsTopic(),
-                    kafkaConfig.getConsumer().getHubsTopic()
-            ));
-            log.info("Aggregator started. Subscribed to topics: {}, {}",
-                    kafkaConfig.getConsumer().getSensorsTopic(),
-                    kafkaConfig.getConsumer().getHubsTopic());
+        try {
+            consumer.subscribe(List.of(sensorsTopic));
+            log.info("Aggregator started. Subscribed to topic: {}", sensorsTopic);
 
             while (true) {
-                ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMillis(1000));
+                ConsumerRecords<String, SensorEventAvro> records =
+                        consumer.poll(Duration.ofSeconds(5));
+
                 if (records.isEmpty()) {
                     continue;
                 }
-                for (ConsumerRecord<String, byte[]> record : records) {
-                    try {
-                        if (record.topic().equals(kafkaConfig.getConsumer().getSensorsTopic())) {
-                            SensorEventAvro event = sensorEventDeserializer.deserialize(record.topic(), record.value());
-                            log.debug("Received sensor event: hub={}, sensor={}, type={}",
-                                    event.getHubId(), event.getId(), event.getPayload().getClass().getSimpleName());
-                            updateState(event).ifPresent(snapshot -> sendSnapshot(producer, snapshot));
-                        } else if (record.topic().equals(kafkaConfig.getConsumer().getHubsTopic())) {
-                            HubEventAvro event = hubEventDeserializer.deserialize(record.topic(), record.value());
-                            log.debug("Received hub event: hub={}, type={}",
-                                    event.getHubId(), event.getPayload().getClass().getSimpleName());
-                            handleHubEvent(event).ifPresent(snapshot -> sendSnapshot(producer, snapshot));
-                        }
-                    } catch (Exception e) {
-                        log.error("Error processing record from topic {}", record.topic(), e);
-                    }
+
+                for (ConsumerRecord<String, SensorEventAvro> record : records) {
+                    log.debug("Received event: hub={}, sensor={}", record.value().getHubId(), record.value().getId());
+                    updateState(record.value())
+                            .ifPresent(snapshot -> send(snapshotTopic, snapshot.getHubId(), snapshot));
                 }
-                producer.flush();
+
                 consumer.commitSync();
             }
         } catch (WakeupException ignored) {
-            // ignore
         } catch (Exception e) {
-            log.error("Unexpected error in Aggregator loop", e);
-        }
-    }
-
-    private void sendSnapshot(Producer<String, SensorsSnapshotAvro> producer, SensorsSnapshotAvro snapshot) {
-        producer.send(new ProducerRecord<>(
-                kafkaConfig.getProducer().getSnapshotsTopic(),
-                snapshot.getHubId(),
-                snapshot
-        ), (metadata, exception) -> {
-            if (exception != null) {
-                log.error("Failed to send snapshot for hub {}", snapshot.getHubId(), exception);
-            } else {
-                log.info("Sent snapshot for hub: {} to Kafka. Offset: {}", snapshot.getHubId(), metadata.offset());
+            log.error("Ошибка во время обработки событий от датчиков", e);
+        } finally {
+            try {
+                producer.flush();
+                consumer.commitSync();
+            } catch (Exception e) {
+                log.error("Error during final cleanup", e);
+            } finally {
+                log.info("Закрываем консьюмер");
+                consumer.close();
+                log.info("Закрываем продюсер");
+                producer.close();
             }
-        });
+        }
     }
 
     private Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
         String hubId = event.getHubId().toString();
         String sensorId = event.getId().toString();
-        SensorsSnapshotAvro oldSnapshot = snapshots.get(hubId);
 
-        Map<String, SensorStateAvro> stateMap = getMutableStateMap(oldSnapshot);
+        SensorsSnapshotAvro snapshot = snapshots.computeIfAbsent(
+                hubId,
+                id -> SensorsSnapshotAvro.newBuilder()
+                        .setHubId(id)
+                        .setTimestamp(event.getTimestamp())
+                        .setSensorsState(new HashMap<>())
+                        .build()
+        );
 
-        if (oldSnapshot != null) {
-            SensorStateAvro oldState = stateMap.get(sensorId);
-            if (oldState != null) {
-                // Ignore if older or exactly same data
-                if (oldState.getTimestamp().isAfter(event.getTimestamp()) ||
-                        oldState.getData().equals(event.getPayload())) {
-                    log.debug("Deduplicating event for hub={}, sensor={}", hubId, sensorId);
-                    return Optional.empty();
-                }
+        SensorStateAvro oldState = snapshot.getSensorsState().get(sensorId);
+
+        if (oldState != null) {
+            if (oldState.getTimestamp().isAfter(event.getTimestamp())
+                    || oldState.getData().equals(event.getPayload())) {
+                return Optional.empty();
             }
         }
 
@@ -138,63 +107,23 @@ public class AggregationStarter {
                 .setData(event.getPayload())
                 .build();
 
-        stateMap.put(sensorId, newState);
+        snapshot.getSensorsState().put(sensorId, newState);
+        snapshot.setTimestamp(event.getTimestamp());
 
-        // Maintain monotonic hub timestamp
-        Instant snapshotTimestamp = event.getTimestamp();
-        if (oldSnapshot != null && oldSnapshot.getTimestamp().isAfter(snapshotTimestamp)) {
-            snapshotTimestamp = oldSnapshot.getTimestamp();
-        }
-
-        SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
-                .setHubId(hubId)
-                .setTimestamp(snapshotTimestamp)
-                .setSensorsState(stateMap)
-                .build();
-
-        snapshots.put(hubId, newSnapshot);
-        return Optional.of(newSnapshot);
+        return Optional.of(snapshot);
     }
 
-    private Optional<SensorsSnapshotAvro> handleHubEvent(HubEventAvro event) {
-        String hubId = event.getHubId().toString();
-        SensorsSnapshotAvro oldSnapshot = snapshots.get(hubId);
-
-        if (event.getPayload() instanceof DeviceRemovedEventAvro) {
-            DeviceRemovedEventAvro removedEvent = (DeviceRemovedEventAvro) event.getPayload();
-            String sensorId = removedEvent.getId().toString();
-
-            if (oldSnapshot != null) {
-                Map<String, SensorStateAvro> stateMap = getMutableStateMap(oldSnapshot);
-                if (stateMap.containsKey(sensorId)) {
-                    stateMap.remove(sensorId);
-                    log.info("Removing sensor {} from hub {}", sensorId, hubId);
-
-                    Instant snapshotTimestamp = event.getTimestamp();
-                    if (oldSnapshot.getTimestamp().isAfter(snapshotTimestamp)) {
-                        snapshotTimestamp = oldSnapshot.getTimestamp();
-                    }
-
-                    SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
-                            .setHubId(hubId)
-                            .setTimestamp(snapshotTimestamp)
-                            .setSensorsState(stateMap)
-                            .build();
-
-                    snapshots.put(hubId, newSnapshot);
-                    return Optional.of(newSnapshot);
-                }
-            }
+    private void send(String topic, String key, SensorsSnapshotAvro snapshot) {
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(out, null);
+            DatumWriter<SensorsSnapshotAvro> writer = new SpecificDatumWriter<>(snapshot.getSchema());
+            writer.write(snapshot, encoder);
+            encoder.flush();
+            producer.send(new ProducerRecord<>(topic, key, out.toByteArray()));
+            log.info("Sent snapshot for hub: {}", key);
+        } catch (IOException e) {
+            throw new RuntimeException("Ошибка сериализации Avro", e);
         }
-        // Snapshots are not sent for scenario or registration events as they don't change sensorState
-        return Optional.empty();
-    }
-
-    private Map<String, SensorStateAvro> getMutableStateMap(SensorsSnapshotAvro snapshot) {
-        Map<String, SensorStateAvro> stateMap = new HashMap<>();
-        if (snapshot != null && snapshot.getSensorsState() != null) {
-            snapshot.getSensorsState().forEach((k, v) -> stateMap.put(k.toString(), v));
-        }
-        return stateMap;
     }
 }
