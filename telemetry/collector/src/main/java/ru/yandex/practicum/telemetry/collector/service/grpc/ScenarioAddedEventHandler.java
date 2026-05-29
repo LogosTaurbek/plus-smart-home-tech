@@ -26,7 +26,7 @@ public class ScenarioAddedEventHandler implements HubEventHandler {
         ScenarioAddedEventProto proto = event.getScenarioAdded();
         
         ScenarioAddedEventAvro avro = ScenarioAddedEventAvro.newBuilder()
-                .setName(proto.getId()) // Mapping Proto id to Avro name as per requirement simplification
+                .setName(proto.getId())
                 .setConditions(proto.getConditionsList().stream()
                         .map(c -> {
                             ScenarioConditionAvro.Builder builder = ScenarioConditionAvro.newBuilder()

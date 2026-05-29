@@ -90,7 +90,7 @@ public class AggregationStarter {
                 consumer.commitSync();
             }
         } catch (WakeupException ignored) {
-            // игнорируем - закрываем консьюмер и продюсер в блоке finally
+            // ignore
         } catch (Exception e) {
             log.error("Ошибка во время обработки событий от датчиков", e);
         }
@@ -135,9 +135,14 @@ public class AggregationStarter {
 
         stateMap.put(sensorId, newState);
 
+        Instant snapshotTimestamp = event.getTimestamp();
+        if (oldSnapshot != null && oldSnapshot.getTimestamp().isAfter(snapshotTimestamp)) {
+            snapshotTimestamp = oldSnapshot.getTimestamp();
+        }
+
         SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
                 .setHubId(hubId)
-                .setTimestamp(event.getTimestamp())
+                .setTimestamp(snapshotTimestamp)
                 .setSensorsState(stateMap)
                 .build();
 
@@ -158,9 +163,14 @@ public class AggregationStarter {
                 if (stateMap.containsKey(sensorId)) {
                     stateMap.remove(sensorId);
 
+                    Instant snapshotTimestamp = event.getTimestamp();
+                    if (oldSnapshot.getTimestamp().isAfter(snapshotTimestamp)) {
+                        snapshotTimestamp = oldSnapshot.getTimestamp();
+                    }
+
                     SensorsSnapshotAvro newSnapshot = SensorsSnapshotAvro.newBuilder()
                             .setHubId(hubId)
-                            .setTimestamp(event.getTimestamp())
+                            .setTimestamp(snapshotTimestamp)
                             .setSensorsState(stateMap)
                             .build();
 
