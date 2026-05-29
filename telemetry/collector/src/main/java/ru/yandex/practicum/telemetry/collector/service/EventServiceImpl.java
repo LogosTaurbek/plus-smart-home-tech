@@ -67,6 +67,9 @@ public class EventServiceImpl implements EventService {
             case TEMPERATURE_SENSOR_EVENT -> {
                 TemperatureSensorEvent e = (TemperatureSensorEvent) event;
                 yield TemperatureSensorAvro.newBuilder()
+                        .setId(e.getId())
+                        .setHubId(e.getHubId())
+                        .setTimestamp(e.getTimestamp())
                         .setTemperatureC(e.getTemperatureC())
                         .setTemperatureF(e.getTemperatureF())
                         .build();
@@ -108,14 +111,14 @@ public class EventServiceImpl implements EventService {
                                 .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()))
                                 .setValue(c.getValue())
                                 .build())
-                        .toList();
+                        .collect(Collectors.toList());
                 List<DeviceActionAvro> actions = e.getActions().stream()
                         .map(a -> DeviceActionAvro.newBuilder()
                                 .setSensorId(a.getSensorId())
                                 .setType(ActionTypeAvro.valueOf(a.getType().name()))
                                 .setValue(a.getValue())
                                 .build())
-                        .toList();
+                        .collect(Collectors.toList());
                 yield ScenarioAddedEventAvro.newBuilder()
                         .setName(e.getName())
                         .setConditions(conditions)
