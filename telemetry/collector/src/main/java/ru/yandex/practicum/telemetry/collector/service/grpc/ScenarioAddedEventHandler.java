@@ -44,7 +44,9 @@ public class ScenarioAddedEventHandler implements HubEventHandler {
                             if (c.getValueCase() == ScenarioConditionProto.ValueCase.INT_VALUE) {
                                 builder.setValue(c.getIntValue());
                             } else if (c.getValueCase() == ScenarioConditionProto.ValueCase.BOOL_VALUE) {
-                                builder.setValue(c.getBoolValue() ? 1 : 0);
+                                builder.setValue(c.getBoolValue() ? 1 : 0); // явная конвертация
+                            } else {
+                                builder.setValue(0);
                             }
                             return builder.build();
                         })
