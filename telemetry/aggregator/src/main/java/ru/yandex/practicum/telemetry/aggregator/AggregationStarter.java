@@ -81,8 +81,11 @@ public class AggregationStarter {
     }
 
     private Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
+        String hubId = event.getHubId().toString();
+        String sensorId = event.getId().toString();
+
         SensorsSnapshotAvro snapshot = snapshots.computeIfAbsent(
-                event.getHubId(),
+                hubId,
                 id -> SensorsSnapshotAvro.newBuilder()
                         .setHubId(id)
                         .setTimestamp(event.getTimestamp())
@@ -90,7 +93,8 @@ public class AggregationStarter {
                         .build()
         );
 
-        SensorStateAvro oldState = snapshot.getSensorsState().get(event.getId());
+        // Ensure we are dealing with String keys in the state map
+        SensorStateAvro oldState = snapshot.getSensorsState().get(sensorId);
 
         if (oldState != null) {
             if (oldState.getTimestamp().isAfter(event.getTimestamp())
@@ -104,7 +108,7 @@ public class AggregationStarter {
                 .setData(event.getPayload())
                 .build();
 
-        snapshot.getSensorsState().put(event.getId(), newState);
+        snapshot.getSensorsState().put(sensorId, newState);
         snapshot.setTimestamp(event.getTimestamp());
 
         return Optional.of(snapshot);

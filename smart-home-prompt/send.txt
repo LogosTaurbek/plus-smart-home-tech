@@ -1,0 +1,334 @@
+Отправляем и принимаем сообщения
+Вы изучили базовые механизмы интеграции Spring Boot и gRPC. Теперь можно вернуться к разработке проекта Smart Home!
+В этом уроке мы покажем, как добавить клиент и сервер gRPC в приложения на Spring Boot. Так вы поймёте, как выстроить систему взаимодействия умных устройств с хабами и с платформой умного дома.
+Ещё несколько необходимых приготовлений
+Мы говорили, что задача сервиса Hub router — принимать сообщения от датчиков умного дома, преобразовывать их в Protobuf и отправлять в модуль Collector по gRPC. Hub router реализован на Spring Boot. Вам не нужно разрабатывать это приложение самостоятельно: мы показываем части его кода только для примера.
+Допустим, у нас уже есть пакет ru.yandex.practicum.telemetry. Нам также понадобится зависимость telemetry со stub-классами протокола хабов и умных датчиков из прошлого урока. После добавления этой зависимости, а также зависимостей-стартеров мы сможем использовать созданные из stub-сервисов бины в Spring Boot проекте Hub router.
+По аналогии с EchoService создаём сервис EventDataProducer и выполняем инъекцию бина из пакета ru.yandex.practicum.telemetry.collector — CollectorControllerGrpc.CollectorControllerBlockingStub (для простоты используем блокирующий клиент):
+
+@Component
+public class EventDataProducer {
+
+   @GrpcClient("collector")
+   private CollectorControllerGrpc.CollectorControllerBlockingStub collectorStub;
+
+} 
+Дальнейшая работа с методами клиента — это отправка сообщений от умных устройств. Вспомните, что gRPC — клиент-серверный механизм. Это значит, что у клиента должна быть информация о сервере, к которому этот клиент подключается и отправляет сообщения. Обратите внимание: нужно конфигурировать именно тот бин, на который мы сослались при внедрении зависимости, — это бин "collector".
+Отправка сообщений датчиков
+В уроке о gRPC-схемах вы сформулировали протокол взаимодействия умных устройств и хаба. В нём были перечислены все возможные типы устройств, которые будет поддерживать система умного дома.
+Описания протокола недостаточно. Нужно создать сами устройства, а точнее их программную имитацию, неотличимую от оригинала. Такой подход называется эмуляцией (от англ. emulation — «подражание»).
+Вам предстоит эмулировать набор устройств. Чем больше устройств вы опишете, тем больше разных данных будут получать хабы и тем больше разных сценариев вы сможете реализовать в обработчиках этих данных.
+На примере самого простого из них, датчика температуры, мы покажем, как реализуется отправка gRPC-сообщений. Для начала создадим метод, который формирует из входных данных объекта-«сенсора» сообщение типа SensorEventProto:
+
+@Component
+public class EventDataProducer {
+   private SensorEventProto createTemperatureSensorEvent(... sensor) {
+        int temperatureCelsius = getRandomSensorValue(sensor.getTemperature());
+        int temperatureFahrenheit = (int) (temperatureCelsius * 1.8 + 32);
+        Instant ts = Instant.now();
+
+        
+        return SensorEventProto.newBuilder()
+                .setId(sensor.getId())
+                .setTimestamp(Timestamp.newBuilder()
+                        .setSeconds(ts.getEpochSecond())
+                        .setNanos(ts.getNano())
+                ).setTemperatureSensorEvent(
+                        TemperatureSensorEvent.newBuilder()
+                                .setTemperatureC(temperatureCelsius)
+                                .setTemperatureF(temperatureFahrenheit)
+                                .build()
+                )
+                .build();
+    }
+} 
+У сгенерированных классов сообщений уже есть удобные fluent-билдеры, что позволяет указать нужные параметры сообщения. В примере мы указываем дату события, идентификатор устройства и температуру в градусах Цельсия и Фаренгейта.
+Чтобы датчик казался настоящим, предлагаем вам самостоятельно продумать для метода getRandomSensorValue(int prevValue) простую функцию, которая немного изменяет текущую температуру в сенсоре. Например, воспользуйтесь для этого функцией Math.random().
+Теперь есть сообщение, которое нужно отправить. Чтобы это сделать, создадим утилитарный метод sendEvent(SensorEvent event). Он выглядит довольно просто, как и указано в описании общих принципов построения RPC. Зачастую работа с сервисом заключается в простом вызове метода:
+
+@Component
+public class EventDataProducer {
+
+   private static final Logger log = LoggerFactory.getLogger(EventDataProducer.class);
+
+   @GrpcClient("collector")
+   private CollectorControllerGrpc.CollectorControllerBlockingStub collectorStub;
+
+   private void sendEvent(SensorEventProto event) {
+      log.info("Отправляю данные: {}", event.getAllFields());
+      CollectorResponse response = collectorStub.collectSensorEvent(event);
+      log.info("Получил ответ от коллектора: {}", response);
+   }
+
+} 
+Всё готово для отправки сообщения! Остался важный момент. Так как мы эмулируем работу датчиков, её нужно сделать активной, чтобы она достоверно представляла работу настоящих устройств. Такие устройства сами решают, когда отправить сообщение о своём состоянии.
+Приложение Hub router должно работать непрерывно, отправляя в цикле разные сигналы хабу. Вы реализуете сервер хаба дальше в уроке. А пока запустите готовый генератор данных, который вы реализовали для температурного и остальных датчиков. Чтобы задача не была банальной, мы придумали схему датчиков умного дома и поместили её в файл application.yaml. Такая структура демодатчиков будет имитирована внутри hub-router:
+
+sensor:
+  motionSensors:
+    - id: "motion-1"
+      linkQuality:
+        minValue: 0
+        maxValue: 100
+      voltage:
+        minValue: 0
+        maxValue: 220
+    - id: "motion-2"
+      linkQuality:
+        minValue: 50
+        maxValue: 60
+      voltage:
+        minValue: 100
+        maxValue: 220
+  switchSensors:
+    - id: "switch-1"
+  temperatureSensors:
+    - id: "temperature-1"
+      temperature:
+        minValue: -20
+        maxValue: 30
+    - id: "temperature-2"
+      temperature:
+        minValue: 0
+        maxValue: 50
+  lightSensors:
+    - id: "light-1"
+      luminosity:
+        minValue: 100
+        maxValue: 800
+    - id: "light-2"
+      luminosity:
+        minValue: 200
+        maxValue: 1000
+  climateSensors:
+    - id: "climate-1"
+      temperature:
+        minValue: 10
+        maxValue: 25
+      humidity:
+        minValue: 30
+        maxValue: 60
+      co2Level:
+        minValue: 400
+        maxValue: 1000
+    - id: "climate-2"
+      temperature:
+        minValue: 15
+        maxValue: 30
+      humidity:
+        minValue: 40
+        maxValue: 65
+      co2Level:
+        minValue: 300
+        maxValue: 800 
+Перейдём к созданию сервера. На нём вы сможете протестировать готовое приложение data-generator.
+Приём сообщений от датчиков
+Следующая важная бизнес-задача — это приём сообщений и их дальнейшая обработка. Усовершенствуйте модуль Collector вместе с нами.
+Продолжайте работать над проектом в ветке 2-collector-grpc. Когда закончите, сделайте пул-реквест на включение изменений в develop. Запустится пайплайн для проверки работы. Если пайплайн успешно завершился и ошибки не найдены, выполните окончательное слияние в ветку develop. 
+Важно! На этом этапе нельзя выполнять слияние изменений в main. Они будут накапливаться в ветке develop. Вы добавите их в main в финальном задании спринта. Тогда же все изменения будут проверены на ревью.
+На этом этапе вам необходимо переделать существующий REST API, принимающий JSON, на gRPC API, который будет работать с Protobuf. Это позволит повысить производительность и сократить размер передаваемых данных.
+Для сборщика данных умных устройств вам потребуется не клиентский, а серверный вариант стартера gRPC. Не забудьте также добавить зависимость от пакета proto-schemas, в котором расположены stub-классы.
+Создание сервера заключается в объявлении бина с аннотацией @GrpcService. Класс этого бина должен быть унаследован от stub-класса сервиса:
+
+@GrpcService
+public class EventController extends CollectorControllerImplBase {
+ 
+   @Override
+    public void collectSensorEvent(SensorEventProto request, StreamObserver<Empty> responseObserver) {
+       
+        }
+} 
+Чтобы сервис не просто «слушал» сообщения, но и мог реализовать необходимую бизнес-логику, вам нужно переопределить метод обработки сообщений. В вашем случае это сообщения типа SensorEvent:
+
+@GrpcService
+public class EventController extends CollectorControllerImplBase {
+
+    @Override
+    public void collectSensorEvent(SensorEventProto request, StreamObserver<Empty> responseObserver) {
+        try {
+                        // здесь реализуется бизнес-логика
+                        // ...
+                        
+            responseObserver.onNext(Empty.getDefaultInstance());
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            responseObserver.onError(new StatusRuntimeException(
+                    Status.INTERNAL
+                            .withDescription(e.getLocalizedMessage())
+                            .withCause(e)
+            ));
+        }
+    }
+} 
+Все события от устройств приходят в виде объекта класса SensorEventProto. В нём есть общие для всех событий поля — идентификатор хаба и устройства, а также таймстемп события. Различаются они только значением поля payload, которое зависит от того, к какому типу датчиков относилось событие. В схеме protobuf это поле представлено типом oneOf.
+При генерации из такой схемы Java-класса создаётся перечисление, в нём указываются все варианты, которые может принимать поле типа oneOf. Это перечисление именуется по следующей схеме: НазваниеПоляCase. Если поле называется payload, значит, перечисление — это PayloadCase:
+
+// упрощённое представление генерируемого перечисления
+public enum PayloadCase {
+    MOTION_SENSOR(4),
+    TEMPERATURE_SENSOR(5),
+    LIGHT_SENSOR(6),
+    CLIMATE_SENSOR(7),
+    SWITCH_SENSOR(8),
+    PAYLOAD_NOT_SET(0);
+    
+    private final int value;
+    
+    // ...другие детали реализации...
+} 
+Чтобы проверить, какое именно значение содержит поле payload в объекте класса SensorEventProto, можно воспользоваться методом getPayloadCase и посмотреть, какое значение было возвращено. В зависимости от него уже вызвать метод для получения нужного типа данных. Например:
+
+SensorEventProto event = getEvent();
+SensorEventProto.PayloadCase payloadCase = event.getPayloadCase();
+switch (payloadCase) {
+    case LIGHT_SENSOR:
+        System.out.println("Получено событие датчика освещённости");
+        // получаем данные датчика освещённости
+        LightSensorProto lightSensor = event.getLightSensor();
+        System.out.println("Уровень освещённости: " + lightSensor.getLuminosity());
+        break;
+    case CLIMATE_SENSOR:
+        System.out.println("Получено событие климатического датчика");
+        // получаем данные климатического датчика
+        ClimateSensorProto climateSensor = event.getClimateSensor();
+        System.out.println("Влажность воздуха: " + climateSensor.getHumidity());
+        break;
+        
+    // ...и так далее...
+    
+    default:
+        System.out.println("Получено событие неизвестного типа: " + payloadCase);
+} 
+С сообщениями от хабов можно работать по такому же принципу, ведь там тоже есть поле payload. Данные, которые оно содержит, зависят от конкретного события.
+Факультативное задание для самостоятельной работы
+Чтобы узнать тип сообщения и правильно его обработать, можно использовать if или switch. Но в будущем количество типов датчиков будет постоянно расти, так что придётся каждый раз добавлять новый блок if или case.
+Со временем такой код станет сложно поддерживать. Вместо этого можно использовать возможности Spring. Spring позволяет внедрять зависимости, при этом необязательно указывать точный тип данных. Вместо этого можно указать интерфейс, и Spring внедрит подходящую реализацию. Например, есть такой интерфейс:
+
+public interface SensorEventHandler {
+    // ...методы...
+} 
+И есть соответствующая реализация:
+
+@Component
+public class MotionSensorEventHandler implements SensorEventHandler
+    //  ...реализация...
+} 
+Тогда можно объявить следующее поле, в которое Spring внедрит нужную реализацию:
+
+@GrpcService // аннотирует класс, являющийся gRPC-сервисом и одновременно бином Spring
+public class EventController extends CollectorControllerGrpc.CollectorControllerImplBase {
+    private final SensorEventHandler sensorEventHandler;
+    
+    // внедрение через конструктор; Spring внедрит правильный объект
+    public EventController(SensorEventHandler sensorEventHandler) {    
+        this.sensorEventHandler = sensorEventHandler;
+    }
+
+    // ...остальная реализация класса...
+} 
+Это отлично работает, когда реализация интерфейса одна. Но если реализаций много, то Spring не будет знать, какую именно нужно выбрать из доступных:
+
+@Component
+public class MotionSensorEventHandler implements SensorEventHandler
+    //  ...реализация для датчика движения...
+}
+
+@Component
+public class LightSensorEventHandler implements SensorEventHandler
+    //  ...реализация для датчика освещённости...
+}
+
+@Component
+public class ClimateSensorEventHandler implements SensorEventHandler
+    //  ...реализация для климатического датчика...
+}
+
+// ....и так далее... 
+Если не требуется, чтобы Spring выбирал какую-то одну реализацию, можно указать ему внедрить все реализации, которые он найдёт, в виде коллекции:
+
+@GrpcService
+public class EventController extends CollectorControllerGrpc.CollectorControllerImplBase {
+    private final Set<SensorEventHandler> sensorEventHandlers;
+    
+    // Spring найдёт все реализации интерфейса SensorEventHandler
+    // и внедрит в виде коллекции; здесь мы указали,
+    // чтобы это было множество — Set (но можно и Collection, и List)
+    public EventController(Set<SensorEventHandler> sensorEventHandlers) {    
+        this.sensorEventHandlers = sensorEventHandlers;
+    }
+} 
+Теперь можно доработать интерфейс:
+
+// Интерфейс, объединяющий все хендлеры для SensorEventProto-событий.
+// Благодаря ему мы сможем внедрить все хендлеры в виде списка
+// в компонент, который будет распределять получаемые события по
+// их обработчикам
+public interface SensorEventHandler {
+    SensorEventProto.PayloadCase getMessageType();
+
+    void handle(SensorEventProto event);
+} 
+Можно избавиться от switch или if и находить нужный обработчик динамически:
+
+@GrpcService
+public class EventController 
+        extends CollectorControllerGrpc.CollectorControllerImplBase {
+    
+    private final Map<SensorEventProto.PayloadCase, SensorEventHandler> sensorEventHandlers;
+
+    public EventController(Set<SensorEventHandler> sensorEventHandlers) {
+        // Преобразовываем набор хендлеров в map, где ключ — тип события от конкретного датчика или хаба.
+        // Это нужно для упрощения поиска подходящего хендлера во время обработки событий
+        this.sensorEventHandlers = sensorEventHandlers.stream()
+                .collect(Collectors.toMap(
+                        SensorEventHandler::getMessageType,
+                        Function.identity()
+                ));
+    }
+
+    /**
+     * Метод для обработки событий от датчиков.
+     * Вызывается при получении нового события от gRPC-клиента.
+     *
+     * @param request           Событие от датчика
+     * @param responseObserver  Ответ для клиента
+     */
+    @Override
+    public void collectSensorEvent(SensorEventProto request, StreamObserver<Empty> responseObserver) {
+        try {
+            // проверяем, есть ли обработчик для полученного события
+            if (sensorEventHandlers.containsKey(request.getPayloadCase())) {
+                // если обработчик найден, передаём событие ему на обработку
+                sensorEventHandlers.get(request.getPayloadCase()).handle(request);
+            } else {
+                throw new IllegalArgumentException("Не могу найти обработчик для события " + request.getPayloadCase());
+            }
+
+            // после обработки события возвращаем ответ клиенту
+            responseObserver.onNext(Empty.getDefaultInstance());
+            // и завершаем обработку запроса
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            // в случае исключения отправляем ошибку клиенту
+            responseObserver.onError(new StatusRuntimeException(Status.fromThrowable(e)));
+        }
+    }
+} 
+Пример реализации обработчика для сообщения от умного переключателя:
+
+@Component
+public class SwitchSensorEventHandler implements SensorEventHandler {
+    // ...детали реализации опущены...
+    
+    @Override
+    public SensorEventProto.PayloadCase getMessageType() {
+        return SensorEventProto.PayloadCase.SWITCH_SENSOR;
+    }
+
+    @Override
+    public void handle(SensorEventProto event) {
+        // ...детали реализации опущены...
+    }
+} 
+Если ваша реализация подразумевает работу с if или switch, вы можете сделать рефакторинг кода и создать обработчики для соответствующих событий, используя возможности Spring.
+Поздравляем! Теперь устройства подключены к хабам умного дома, и все сообщения успешно передаются между участниками сети. С помощью gRPC и Spring вы реализовали полноценный и эффективный протокол обмена информацией между разными платформами. А именно между серверным сервисом на Java и Spring Boot и микроконтроллерами в устройствах умного дома.
