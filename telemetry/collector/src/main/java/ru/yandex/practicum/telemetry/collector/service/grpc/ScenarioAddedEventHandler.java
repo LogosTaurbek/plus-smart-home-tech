@@ -32,22 +32,17 @@ public class ScenarioAddedEventHandler implements HubEventHandler {
                 .setName(proto.getId())
                 .setConditions(proto.getConditionsList().stream()
                         .map(c -> {
-                            log.info("condition: sensorId={}, type={}, operation={}, valueCase={}, intValue={}, boolValue={}",
-                                    c.getSensorId(), c.getType(), c.getOperation(),
-                                    c.getValueCase(), c.getIntValue(), c.getBoolValue());
-
                             ScenarioConditionAvro.Builder builder = ScenarioConditionAvro.newBuilder()
                                     .setSensorId(c.getSensorId())
-                                    .setType(ConditionTypeAvro.valueOf(c.getType().name().replace("_SENSOR", "")))
-                                    .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name().replace("_THAN", "_THAN")));
+                                    .setType(ConditionTypeAvro.valueOf(c.getType().name()))
+                                    .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()));
 
-                            if (c.getValueCase() == ScenarioConditionProto.ValueCase.INT_VALUE) {
-                                builder.setValue(c.getIntValue());
-                            } else if (c.getValueCase() == ScenarioConditionProto.ValueCase.BOOL_VALUE) {
-                                builder.setValue(c.getBoolValue() ? 1 : 0); // явная конвертация
-                            } else {
-                                builder.setValue(0);
+                            switch (c.getValueCase()) {
+                                case INT_VALUE -> builder.setValue(c.getIntValue());
+                                case BOOL_VALUE -> builder.setValue(c.getBoolValue());
+                                default -> builder.setValue(null);
                             }
+
                             return builder.build();
                         })
                         .collect(Collectors.toList()))
