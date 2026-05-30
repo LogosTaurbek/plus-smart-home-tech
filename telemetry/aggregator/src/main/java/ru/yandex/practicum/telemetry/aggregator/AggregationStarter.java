@@ -81,7 +81,6 @@ public class AggregationStarter {
     }
 
     private Optional<SensorsSnapshotAvro> updateState(SensorEventAvro event) {
-        // FIX: Consistently use toString() to avoid Utf8/String mismatch
         String hubId = event.getHubId().toString();
         String sensorId = event.getId().toString();
 

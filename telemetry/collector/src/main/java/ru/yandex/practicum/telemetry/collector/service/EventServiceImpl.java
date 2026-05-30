@@ -110,8 +110,14 @@ public class EventServiceImpl implements EventService {
                             condition.setSensorId(c.getSensorId());
                             condition.setType(ConditionTypeAvro.valueOf(c.getType().name()));
                             condition.setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()));
-                            // Use index for union field to ensure correct serialization and type identification
-                            condition.put(3, c.getValue());
+                            // Logic from col.txt: Explicitly package into union slot
+                            if (c.getValue() instanceof Integer i) {
+                                condition.put(3, i);
+                            } else if (c.getValue() instanceof Boolean b) {
+                                condition.put(3, b);
+                            } else {
+                                condition.put(3, null);
+                            }
                             return condition;
                         })
                         .collect(Collectors.toList());
@@ -120,7 +126,6 @@ public class EventServiceImpl implements EventService {
                             DeviceActionAvro action = new DeviceActionAvro();
                             action.setSensorId(a.getSensorId());
                             action.setType(ActionTypeAvro.valueOf(a.getType().name()));
-                            // Use index for union field
                             action.put(2, a.getValue());
                             return action;
                         })

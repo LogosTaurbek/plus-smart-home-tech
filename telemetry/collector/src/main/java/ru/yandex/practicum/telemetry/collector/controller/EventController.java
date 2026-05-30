@@ -68,11 +68,11 @@ public class EventController extends CollectorControllerGrpc.CollectorController
                             condition.setSensorId(c.getSensorId());
                             condition.setType(ConditionType.valueOf(c.getType().name()));
                             condition.setOperation(ConditionOperation.valueOf(c.getOperation().name()));
-                            // FIX: Use explicit hasX() to ensure correct type preservation
+                            // Logic from event.txt: BOOL becomes 1/0
                             if (c.hasIntValue()) {
                                 condition.setValue(c.getIntValue());
                             } else if (c.hasBoolValue()) {
-                                condition.setValue(c.getBoolValue());
+                                condition.setValue(c.getBoolValue() ? 1 : 0);
                             }
                             return condition;
                         })
