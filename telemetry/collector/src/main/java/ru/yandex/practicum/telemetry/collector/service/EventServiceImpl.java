@@ -113,13 +113,11 @@ public class EventServiceImpl implements EventService {
                                 .build())
                         .collect(Collectors.toList());
                 List<DeviceActionAvro> actions = e.getActions().stream()
-                        .map(a -> {
-                            DeviceActionAvro action = new DeviceActionAvro();
-                            action.setSensorId(a.getSensorId());
-                            action.setType(ActionTypeAvro.valueOf(a.getType().name()));
-                            action.put(2, a.getValue());
-                            return action;
-                        })
+                        .map(a -> DeviceActionAvro.newBuilder()
+                                .setSensorId(a.getSensorId())
+                                .setType(ActionTypeAvro.valueOf(a.getType().name()))
+                                .setValue(a.getValue() != null ? a.getValue() : 0)
+                                .build())
                         .collect(Collectors.toList());
                 yield ScenarioAddedEventAvro.newBuilder()
                         .setName(e.getName())
