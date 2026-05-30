@@ -105,11 +105,11 @@ public class EventServiceImpl implements EventService {
             case SCENARIO_ADDED -> {
                 ScenarioAddedEvent e = (ScenarioAddedEvent) event;
                 List<ScenarioConditionAvro> conditions = e.getConditions().stream()
-                        .map(c -> new ScenarioConditionAvro(      // ← ЗАМЕНИТЕ ЭТУ ЧАСТЬ
+                        .map(c -> new ScenarioConditionAvro(
                                 c.getSensorId(),
                                 ConditionTypeAvro.valueOf(c.getType().name()),
                                 ConditionOperationAvro.valueOf(c.getOperation().name()),
-                                c.getValue() instanceof Integer i ? i : 0
+                                c.getValue()  // просто передаём Object как есть
                         ))
                         .collect(Collectors.toList());
                 List<DeviceActionAvro> actions = e.getActions().stream()
