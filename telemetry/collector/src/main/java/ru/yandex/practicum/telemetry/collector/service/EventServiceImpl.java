@@ -105,30 +105,19 @@ public class EventServiceImpl implements EventService {
             case SCENARIO_ADDED -> {
                 ScenarioAddedEvent e = (ScenarioAddedEvent) event;
                 List<ScenarioConditionAvro> conditions = e.getConditions().stream()
-                        .map(c -> {
-                            ScenarioConditionAvro condition = new ScenarioConditionAvro();
-                            condition.setSensorId(c.getSensorId());
-                            condition.setType(ConditionTypeAvro.valueOf(c.getType().name()));
-                            condition.setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()));
-                            // Logic from col.txt: Explicitly package into union slot
-                            if (c.getValue() instanceof Integer i) {
-                                condition.put(3, i);
-                            } else if (c.getValue() instanceof Boolean b) {
-                                condition.put(3, b);
-                            } else {
-                                condition.put(3, null);
-                            }
-                            return condition;
-                        })
+                        .map(c -> ScenarioConditionAvro.newBuilder()
+                                .setSensorId(c.getSensorId())
+                                .setType(ConditionTypeAvro.valueOf(c.getType().name()))
+                                .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()))
+                                .setValue(c.getValue())
+                                .build())
                         .collect(Collectors.toList());
                 List<DeviceActionAvro> actions = e.getActions().stream()
-                        .map(a -> {
-                            DeviceActionAvro action = new DeviceActionAvro();
-                            action.setSensorId(a.getSensorId());
-                            action.setType(ActionTypeAvro.valueOf(a.getType().name()));
-                            action.put(2, a.getValue());
-                            return action;
-                        })
+                        .map(a -> DeviceActionAvro.newBuilder()
+                                .setSensorId(a.getSensorId())
+                                .setType(ActionTypeAvro.valueOf(a.getType().name()))
+                                .setValue(a.getValue())
+                                .build())
                         .collect(Collectors.toList());
                 yield ScenarioAddedEventAvro.newBuilder()
                         .setName(e.getName())
