@@ -109,14 +109,14 @@ public class EventServiceImpl implements EventService {
                                 .setSensorId(c.getSensorId())
                                 .setType(ConditionTypeAvro.valueOf(c.getType().name()))
                                 .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()))
-                                .setValue(c.getValue() instanceof Integer i ? i : 0)
+                                .setValue(c.getValue())
                                 .build())
                         .collect(Collectors.toList());
                 List<DeviceActionAvro> actions = e.getActions().stream()
                         .map(a -> DeviceActionAvro.newBuilder()
                                 .setSensorId(a.getSensorId())
                                 .setType(ActionTypeAvro.valueOf(a.getType().name()))
-                                .setValue(a.getValue() != null ? a.getValue() : 0)
+                                .setValue(a.getValue())
                                 .build())
                         .collect(Collectors.toList());
                 yield ScenarioAddedEventAvro.newBuilder()
