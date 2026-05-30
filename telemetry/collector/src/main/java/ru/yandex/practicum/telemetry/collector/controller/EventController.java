@@ -68,6 +68,7 @@ public class EventController extends CollectorControllerGrpc.CollectorController
                             condition.setSensorId(c.getSensorId());
                             condition.setType(ConditionType.valueOf(c.getType().name()));
                             condition.setOperation(ConditionOperation.valueOf(c.getOperation().name()));
+                            // FIX: Preserve original type (Boolean or Integer) to match Avro union
                             condition.setValue(switch (c.getValueCase()) {
                                 case BOOL_VALUE -> c.getBoolValue();
                                 case INT_VALUE -> c.getIntValue();
