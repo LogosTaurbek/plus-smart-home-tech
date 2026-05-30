@@ -104,6 +104,17 @@ public class EventServiceImpl implements EventService {
             }
             case SCENARIO_ADDED -> {
                 ScenarioAddedEvent e = (ScenarioAddedEvent) event;
+
+                e.getConditions().forEach(c ->
+                        System.out.println(">>> CONDITION: sensorId=" + c.getSensorId()
+                                + " value=" + c.getValue()
+                                + " valueType=" + (c.getValue() == null ? "null" : c.getValue().getClass().getName()))
+                );
+                e.getActions().forEach(a ->
+                        System.out.println(">>> ACTION: sensorId=" + a.getSensorId()
+                                + " value=" + a.getValue())
+                );
+
                 List<ScenarioConditionAvro> conditions = e.getConditions().stream()
                         .map(c -> {
                             ScenarioConditionAvro.Builder builder = ScenarioConditionAvro.newBuilder()
