@@ -68,7 +68,7 @@ public class EventController extends CollectorControllerGrpc.CollectorController
                             condition.setSensorId(c.getSensorId());
                             condition.setType(ConditionType.valueOf(c.getType().name()));
                             condition.setOperation(ConditionOperation.valueOf(c.getOperation().name()));
-                            // Preserve original type from gRPC oneof
+                            // FIX: Use explicit hasX() to ensure correct type preservation
                             if (c.hasIntValue()) {
                                 condition.setValue(c.getIntValue());
                             } else if (c.hasBoolValue()) {
