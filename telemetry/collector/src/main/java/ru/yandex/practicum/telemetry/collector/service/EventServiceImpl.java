@@ -105,19 +105,25 @@ public class EventServiceImpl implements EventService {
             case SCENARIO_ADDED -> {
                 ScenarioAddedEvent e = (ScenarioAddedEvent) event;
                 List<ScenarioConditionAvro> conditions = e.getConditions().stream()
-                        .map(c -> ScenarioConditionAvro.newBuilder()
-                                .setSensorId(c.getSensorId())
-                                .setType(ConditionTypeAvro.valueOf(c.getType().name()))
-                                .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()))
-                                .setValue(c.getValue())
-                                .build())
+                        .map(c -> {
+                            ScenarioConditionAvro condition = new ScenarioConditionAvro();
+                            condition.setSensorId(c.getSensorId());
+                            condition.setType(ConditionTypeAvro.valueOf(c.getType().name()));
+                            condition.setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()));
+                            // Use index for union field to ensure correct serialization and type identification
+                            condition.put(3, c.getValue());
+                            return condition;
+                        })
                         .collect(Collectors.toList());
                 List<DeviceActionAvro> actions = e.getActions().stream()
-                        .map(a -> DeviceActionAvro.newBuilder()
-                                .setSensorId(a.getSensorId())
-                                .setType(ActionTypeAvro.valueOf(a.getType().name()))
-                                .setValue(a.getValue())
-                                .build())
+                        .map(a -> {
+                            DeviceActionAvro action = new DeviceActionAvro();
+                            action.setSensorId(a.getSensorId());
+                            action.setType(ActionTypeAvro.valueOf(a.getType().name()));
+                            // Use index for union field
+                            action.put(2, a.getValue());
+                            return action;
+                        })
                         .collect(Collectors.toList());
                 yield ScenarioAddedEventAvro.newBuilder()
                         .setName(e.getName())
