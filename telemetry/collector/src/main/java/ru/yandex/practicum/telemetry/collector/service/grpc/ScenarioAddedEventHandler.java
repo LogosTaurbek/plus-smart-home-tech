@@ -39,8 +39,8 @@ public class ScenarioAddedEventHandler implements HubEventHandler {
 
                             switch (c.getValueCase()) {
                                 case INT_VALUE -> builder.setValue(c.getIntValue());
-                                case BOOL_VALUE -> builder.setValue(c.getBoolValue());
-                                default -> builder.setValue(null);
+                                case BOOL_VALUE -> builder.setValue(c.getBoolValue() ? 1 : 0);
+                                default -> builder.setValue(0);
                             }
 
                             return builder.build();
