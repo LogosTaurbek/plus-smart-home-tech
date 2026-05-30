@@ -68,7 +68,7 @@ public class EventController extends CollectorControllerGrpc.CollectorController
                             condition.setSensorId(c.getSensorId());
                             condition.setType(ConditionType.valueOf(c.getType().name()));
                             condition.setOperation(ConditionOperation.valueOf(c.getOperation().name()));
-                            // FIX: Use getValueCase and preserve original types
+                            // Use getValueCase for reliable oneof mapping
                             if (c.getValueCase() == ScenarioConditionProto.ValueCase.INT_VALUE) {
                                 condition.setValue(c.getIntValue());
                             } else if (c.getValueCase() == ScenarioConditionProto.ValueCase.BOOL_VALUE) {
