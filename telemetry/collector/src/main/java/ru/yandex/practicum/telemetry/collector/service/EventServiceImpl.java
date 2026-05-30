@@ -148,7 +148,24 @@ public class EventServiceImpl implements EventService {
                 .setPayload(payload)
                 .build();
 
-        send(hubsTopic, event.getHubId(), avro);
+        send(hubsTopic, event.getHubId(), avro); // теперь вызовет перегрузку для HubEventAvro
+    }
+
+    private void send(String topic, String key, HubEventAvro avro) {
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(out, null);
+
+            // Используем GenericDatumWriter с явной схемой
+            org.apache.avro.generic.GenericDatumWriter<org.apache.avro.generic.GenericRecord> writer =
+                    new org.apache.avro.generic.GenericDatumWriter<>(avro.getSchema());
+            writer.write(avro, encoder);
+            encoder.flush();
+
+            producer.send(new ProducerRecord<>(topic, key, out.toByteArray()));
+        } catch (IOException e) {
+            throw new RuntimeException("Ошибка сериализации Avro", e);
+        }
     }
 
     private <T extends SpecificRecordBase> void send(String topic, String key, T avro) {
