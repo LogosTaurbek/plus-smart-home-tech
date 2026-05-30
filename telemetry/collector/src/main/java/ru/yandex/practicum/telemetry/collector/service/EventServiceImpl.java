@@ -109,7 +109,7 @@ public class EventServiceImpl implements EventService {
                                 c.getSensorId(),
                                 ConditionTypeAvro.valueOf(c.getType().name()),
                                 ConditionOperationAvro.valueOf(c.getOperation().name()),
-                                c.getValue()  // просто передаём Object как есть
+                                c.getValue() != null ? c.getValue() : 0
                         ))
                         .collect(Collectors.toList());
                 List<DeviceActionAvro> actions = e.getActions().stream()
