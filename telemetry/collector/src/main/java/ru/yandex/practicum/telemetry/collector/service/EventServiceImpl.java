@@ -110,14 +110,8 @@ public class EventServiceImpl implements EventService {
                             condition.setSensorId(c.getSensorId());
                             condition.setType(ConditionTypeAvro.valueOf(c.getType().name()));
                             condition.setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()));
-                            // Принудительно упаковываем в нужный тип
-                            if (c.getValue() instanceof Integer i) {
-                                condition.put(3, i); // индекс поля value = 3
-                            } else if (c.getValue() instanceof Boolean b) {
-                                condition.put(3, b);
-                            } else {
-                                condition.put(3, null);
-                            }
+                            // Use index for union field to ensure correct serialization
+                            condition.put(3, c.getValue());
                             return condition;
                         })
                         .collect(Collectors.toList());
@@ -148,24 +142,7 @@ public class EventServiceImpl implements EventService {
                 .setPayload(payload)
                 .build();
 
-        send(hubsTopic, event.getHubId(), avro); // теперь вызовет перегрузку для HubEventAvro
-    }
-
-    private void send(String topic, String key, HubEventAvro avro) {
-        try {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(out, null);
-
-            // Используем GenericDatumWriter с явной схемой
-            org.apache.avro.generic.GenericDatumWriter<org.apache.avro.generic.GenericRecord> writer =
-                    new org.apache.avro.generic.GenericDatumWriter<>(avro.getSchema());
-            writer.write(avro, encoder);
-            encoder.flush();
-
-            producer.send(new ProducerRecord<>(topic, key, out.toByteArray()));
-        } catch (IOException e) {
-            throw new RuntimeException("Ошибка сериализации Avro", e);
-        }
+        send(hubsTopic, event.getHubId(), avro);
     }
 
     private <T extends SpecificRecordBase> void send(String topic, String key, T avro) {
@@ -176,6 +153,7 @@ public class EventServiceImpl implements EventService {
             writer.write(avro, encoder);
             encoder.flush();
             producer.send(new ProducerRecord<>(topic, key, out.toByteArray()));
+            log.debug("Sent event to Kafka: topic={}, key={}", topic, key);
         } catch (IOException e) {
             throw new RuntimeException("Ошибка сериализации Avro", e);
         }
