@@ -147,6 +147,23 @@ public class EventServiceImpl implements EventService {
         send(hubsTopic, event.getHubId(), avro);
     }
 
+    private void send(String topic, String key, HubEventAvro avro) {
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(out, null);
+
+            org.apache.avro.reflect.ReflectDatumWriter<HubEventAvro> writer =
+                    new org.apache.avro.reflect.ReflectDatumWriter<>(HubEventAvro.class);
+            writer.write(avro, encoder);
+            encoder.flush();
+
+            producer.send(new ProducerRecord<>(topic, key, out.toByteArray()));
+            log.debug("Sent hub event to Kafka: topic={}, key={}", topic, key);
+        } catch (IOException e) {
+            throw new RuntimeException("Ошибка сериализации Avro", e);
+        }
+    }
+
     private <T extends SpecificRecordBase> void send(String topic, String key, T avro) {
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
