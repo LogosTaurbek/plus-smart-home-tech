@@ -117,7 +117,7 @@ public class EventServiceImpl implements EventService {
                                     c.getSensorId(),
                                     ConditionTypeAvro.valueOf(c.getType().name()),
                                     ConditionOperationAvro.valueOf(c.getOperation().name()),
-                                    value
+                                    c.getValue() instanceof Integer i ? i : 0
                             );
                         })
                         .collect(Collectors.toList());
