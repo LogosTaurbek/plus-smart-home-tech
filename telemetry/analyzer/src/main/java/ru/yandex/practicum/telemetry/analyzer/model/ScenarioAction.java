@@ -17,7 +17,7 @@ public class ScenarioAction {
     private Scenario scenario;
 
     @Id
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "sensor_id")
     private Sensor sensor;
 
