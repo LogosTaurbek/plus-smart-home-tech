@@ -1,30 +1,26 @@
-package ru.yandex.practicum.telemetry.collector.service;
+package ru.yandex.practicum.collector.service;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.EncoderFactory;
 import org.apache.avro.specific.SpecificDatumWriter;
 import org.apache.avro.specific.SpecificRecordBase;
-import org.apache.kafka.clients.producer.Producer;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import ru.yandex.practicum.collector.model.*;
 import ru.yandex.practicum.kafka.telemetry.event.*;
-import ru.yandex.practicum.telemetry.collector.model.event.*;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
-import java.util.stream.Collectors;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
-public class EventServiceImpl implements EventService {
+public class CollectorService {
 
-    private final Producer<String, byte[]> producer;
+    private final KafkaTemplate<String, byte[]> kafkaTemplate;
 
     @Value("${collector.kafka.topics.sensors}")
     private String sensorsTopic;
@@ -32,8 +28,7 @@ public class EventServiceImpl implements EventService {
     @Value("${collector.kafka.topics.hubs}")
     private String hubsTopic;
 
-    @Override
-    public void handleSensorEvent(SensorEvent event) {
+    public void collectSensorEvent(SensorEvent event) {
         Object payload = switch (event.getType()) {
             case CLIMATE_SENSOR_EVENT -> {
                 ClimateSensorEvent e = (ClimateSensorEvent) event;
@@ -67,9 +62,6 @@ public class EventServiceImpl implements EventService {
             case TEMPERATURE_SENSOR_EVENT -> {
                 TemperatureSensorEvent e = (TemperatureSensorEvent) event;
                 yield TemperatureSensorAvro.newBuilder()
-                        .setId(e.getId())
-                        .setHubId(e.getHubId())
-                        .setTimestamp(e.getTimestamp())
                         .setTemperatureC(e.getTemperatureC())
                         .setTemperatureF(e.getTemperatureF())
                         .build();
@@ -86,8 +78,7 @@ public class EventServiceImpl implements EventService {
         send(sensorsTopic, event.getHubId(), avro);
     }
 
-    @Override
-    public void handleHubEvent(HubEvent event) {
+    public void collectHubEvent(HubEvent event) {
         Object payload = switch (event.getType()) {
             case DEVICE_ADDED -> {
                 DeviceAddedEvent e = (DeviceAddedEvent) event;
@@ -111,14 +102,14 @@ public class EventServiceImpl implements EventService {
                                 .setOperation(ConditionOperationAvro.valueOf(c.getOperation().name()))
                                 .setValue(c.getValue())
                                 .build())
-                        .collect(Collectors.toList());
+                        .toList();
                 List<DeviceActionAvro> actions = e.getActions().stream()
                         .map(a -> DeviceActionAvro.newBuilder()
                                 .setSensorId(a.getSensorId())
                                 .setType(ActionTypeAvro.valueOf(a.getType().name()))
                                 .setValue(a.getValue())
                                 .build())
-                        .collect(Collectors.toList());
+                        .toList();
                 yield ScenarioAddedEventAvro.newBuilder()
                         .setName(e.getName())
                         .setConditions(conditions)
@@ -149,10 +140,10 @@ public class EventServiceImpl implements EventService {
             DatumWriter<T> writer = new SpecificDatumWriter<>(avro.getSchema());
             writer.write(avro, encoder);
             encoder.flush();
-            producer.send(new ProducerRecord<>(topic, key, out.toByteArray()));
-            log.debug("Sent event to Kafka: topic={}, key={}", topic, key);
+            kafkaTemplate.send(topic, key, out.toByteArray());
         } catch (IOException e) {
             throw new RuntimeException("Ошибка сериализации Avro", e);
         }
     }
 }
+
