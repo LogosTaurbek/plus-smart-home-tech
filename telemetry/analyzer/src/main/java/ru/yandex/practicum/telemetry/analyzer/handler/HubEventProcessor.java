@@ -9,6 +9,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.WakeupException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.kafka.telemetry.event.*;
 import ru.yandex.practicum.telemetry.analyzer.model.*;
 import ru.yandex.practicum.telemetry.analyzer.repository.ScenarioRepository;
@@ -37,7 +38,7 @@ public class HubEventProcessor implements Runnable {
 
             while (true) {
                 ConsumerRecords<String, SpecificRecordBase> records =
-                        hubConsumer.poll(Duration.ofSeconds(5));
+                        hubConsumer.poll(Duration.ofSeconds(1));
 
                 for (ConsumerRecord<String, SpecificRecordBase> record : records) {
                     handleHubEvent(record.value());
@@ -57,30 +58,31 @@ public class HubEventProcessor implements Runnable {
 
     private void handleHubEvent(SpecificRecordBase event) {
         if (!(event instanceof HubEventAvro hubEvent)) return;
-        String hubId = hubEvent.getHubId().toString();
+        String hubId = hubEvent.getHubId();
         Object payload = hubEvent.getPayload();
 
         if (payload instanceof DeviceAddedEventAvro deviceAdded) {
-            Sensor sensor = new Sensor(deviceAdded.getId().toString(), hubId);
+            Sensor sensor = new Sensor(deviceAdded.getId(), hubId);
             sensorRepository.save(sensor);
-            log.debug("Saved sensor: {} for hub: {}", sensor.getId(), hubId);
+            log.debug("Saved sensor {} for hub {}", deviceAdded.getId(), hubId);
 
         } else if (payload instanceof DeviceRemovedEventAvro deviceRemoved) {
-            sensorRepository.deleteById(deviceRemoved.getId().toString());
-            log.debug("Removed sensor: {} for hub: {}", deviceRemoved.getId(), hubId);
+            sensorRepository.deleteById(deviceRemoved.getId());
+            log.debug("Removed sensor {} for hub {}", deviceRemoved.getId(), hubId);
 
         } else if (payload instanceof ScenarioAddedEventAvro scenarioAdded) {
             handleScenarioAdded(hubId, scenarioAdded);
 
         } else if (payload instanceof ScenarioRemovedEventAvro scenarioRemoved) {
-            scenarioRepository.findByHubIdAndName(hubId, scenarioRemoved.getName().toString())
+            scenarioRepository.findByHubIdAndName(hubId, scenarioRemoved.getName())
                     .ifPresent(scenarioRepository::delete);
-            log.debug("Removed scenario: {} for hub: {}", scenarioRemoved.getName(), hubId);
+            log.debug("Removed scenario {} for hub {}", scenarioRemoved.getName(), hubId);
         }
     }
 
-    private void handleScenarioAdded(String hubId, ScenarioAddedEventAvro avro) {
-        String name = avro.getName().toString();
+    @Transactional
+    protected void handleScenarioAdded(String hubId, ScenarioAddedEventAvro avro) {
+        String name = avro.getName();
 
         Scenario scenario = scenarioRepository.findByHubIdAndName(hubId, name)
                 .orElseGet(() -> {
@@ -94,16 +96,19 @@ public class HubEventProcessor implements Runnable {
         scenario.getActions().clear();
 
         for (ScenarioConditionAvro c : avro.getConditions()) {
-            String sensorId = c.getSensorId().toString();
+            String sensorId = c.getSensorId();
             sensorRepository.findByIdAndHubId(sensorId, hubId).ifPresent(sensor -> {
                 Condition condition = new Condition();
                 condition.setType(c.getType().name());
                 condition.setOperation(c.getOperation().name());
-                if (c.getValue() instanceof Integer intVal) {
+
+                Object val = c.getValue();
+                if (val instanceof Integer intVal) {
                     condition.setValue(intVal);
-                } else if (c.getValue() instanceof Boolean boolVal) {
+                } else if (val instanceof Boolean boolVal) {
                     condition.setValue(boolVal ? 1 : 0);
                 }
+                // null means Hub Router didn't send a value (e.g. MOTION) — threshold stays null
 
                 ScenarioCondition sc = new ScenarioCondition();
                 sc.setScenario(scenario);
@@ -114,7 +119,7 @@ public class HubEventProcessor implements Runnable {
         }
 
         for (DeviceActionAvro a : avro.getActions()) {
-            String sensorId = a.getSensorId().toString();
+            String sensorId = a.getSensorId();
             sensorRepository.findByIdAndHubId(sensorId, hubId).ifPresent(sensor -> {
                 Action action = new Action();
                 action.setType(a.getType().name());
@@ -131,6 +136,7 @@ public class HubEventProcessor implements Runnable {
         }
 
         scenarioRepository.save(scenario);
-        log.debug("Saved scenario: {} for hub: {}", name, hubId);
+        log.info("Saved scenario [{}] for hub {} with {} conditions and {} actions",
+                name, hubId, scenario.getConditions().size(), scenario.getActions().size());
     }
 }

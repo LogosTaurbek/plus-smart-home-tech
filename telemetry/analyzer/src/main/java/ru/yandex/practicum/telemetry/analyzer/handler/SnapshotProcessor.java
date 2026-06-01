@@ -1,7 +1,6 @@
 package ru.yandex.practicum.telemetry.analyzer.handler;
 
 import com.google.protobuf.Timestamp;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -25,17 +24,23 @@ import java.util.Map;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SnapshotProcessor {
 
     private final KafkaConsumer<String, SensorsSnapshotAvro> snapshotConsumer;
     private final ScenarioRepository scenarioRepository;
-
-    @GrpcClient("hub-router")
-    private HubRouterControllerGrpc.HubRouterControllerBlockingStub hubRouterClient;
+    private final HubRouterControllerGrpc.HubRouterControllerBlockingStub hubRouterClient;
 
     @Value("${analyzer.kafka.topics.snapshots}")
     private String snapshotsTopic;
+
+    public SnapshotProcessor(
+            KafkaConsumer<String, SensorsSnapshotAvro> snapshotConsumer,
+            ScenarioRepository scenarioRepository,
+            @GrpcClient("hub-router") HubRouterControllerGrpc.HubRouterControllerBlockingStub hubRouterClient) {
+        this.snapshotConsumer = snapshotConsumer;
+        this.scenarioRepository = scenarioRepository;
+        this.hubRouterClient = hubRouterClient;
+    }
 
     public void start() {
         try {
@@ -44,13 +49,16 @@ public class SnapshotProcessor {
 
             while (true) {
                 ConsumerRecords<String, SensorsSnapshotAvro> records =
-                        snapshotConsumer.poll(Duration.ofSeconds(5));
+                        snapshotConsumer.poll(Duration.ofSeconds(1));
 
+                boolean hasScenarios = false;
                 for (ConsumerRecord<String, SensorsSnapshotAvro> record : records) {
-                    processSnapshot(record.value());
+                    if (processSnapshot(record.value())) {
+                        hasScenarios = true;
+                    }
                 }
 
-                if (!records.isEmpty()) {
+                if (!records.isEmpty() && hasScenarios) {
                     snapshotConsumer.commitSync();
                 }
             }
@@ -62,12 +70,15 @@ public class SnapshotProcessor {
         }
     }
 
-    private void processSnapshot(SensorsSnapshotAvro snapshot) {
-        String hubId = snapshot.getHubId().toString();
+    private boolean processSnapshot(SensorsSnapshotAvro snapshot) {
+        String hubId = snapshot.getHubId();
         Map<String, SensorStateAvro> sensorsState = snapshot.getSensorsState();
 
         List<Scenario> scenarios = scenarioRepository.findByHubId(hubId);
-        if (scenarios.isEmpty()) return;
+        if (scenarios.isEmpty()) {
+            log.debug("No scenarios for hub: {}", hubId);
+            return false;
+        }
 
         Instant now = Instant.now();
         Timestamp timestamp = Timestamp.newBuilder()
@@ -76,13 +87,17 @@ public class SnapshotProcessor {
                 .build();
 
         for (Scenario scenario : scenarios) {
+            if (scenario.getConditions().isEmpty()) continue;
+
             boolean allConditionsMet = scenario.getConditions().stream()
                     .allMatch(sc -> checkCondition(sc, sensorsState));
 
-            if (allConditionsMet && !scenario.getConditions().isEmpty()) {
+            if (allConditionsMet) {
+                log.info("Scenario [{}] conditions met for hub {}", scenario.getName(), hubId);
                 executeActions(scenario, timestamp);
             }
         }
+        return true;
     }
 
     private boolean checkCondition(ScenarioCondition sc, Map<String, SensorStateAvro> sensorsState) {
@@ -91,11 +106,16 @@ public class SnapshotProcessor {
         if (state == null) return false;
 
         Condition condition = sc.getCondition();
-        Integer threshold = condition.getValue();
-        if (threshold == null) return false;
-
         Integer sensorValue = extractSensorValue(state.getData(), condition.getType());
         if (sensorValue == null) return false;
+
+        Integer threshold = condition.getValue();
+
+        // threshold is null for boolean-type conditions (e.g. MOTION) where Hub Router
+        // doesn't send a value in the proto — treat as "is sensor active/non-zero"
+        if (threshold == null) {
+            return sensorValue != 0;
+        }
 
         return switch (condition.getOperation()) {
             case "EQUALS" -> sensorValue.equals(threshold);
@@ -153,8 +173,8 @@ public class SnapshotProcessor {
                         .build();
 
                 hubRouterClient.handleDeviceAction(request);
-                log.debug("Executed action {} for scenario {} hub {}",
-                        action.getType(), scenario.getName(), scenario.getHubId());
+                log.info("Sent action {} to hub {} for scenario {}",
+                        action.getType(), scenario.getHubId(), scenario.getName());
             } catch (Exception e) {
                 log.error("Failed to execute action for scenario {}", scenario.getName(), e);
             }
