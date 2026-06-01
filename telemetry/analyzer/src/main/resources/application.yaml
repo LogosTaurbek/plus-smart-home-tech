@@ -7,7 +7,7 @@ spring:
     password: analyzer
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     show-sql: false
   liquibase:
     change-log: classpath:db/changelog/changelog.xml

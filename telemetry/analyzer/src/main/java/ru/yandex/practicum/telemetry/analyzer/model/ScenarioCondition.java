@@ -9,20 +9,20 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@IdClass(ScenarioConditionId.class)
 public class ScenarioCondition {
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "scenario_id")
+    @JoinColumn(name = "scenario_id", nullable = false)
     private Scenario scenario;
 
-    @Id
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "sensor_id")
+    @JoinColumn(name = "sensor_id", nullable = false)
     private Sensor sensor;
 
-    @Id
     @ManyToOne(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
-    @JoinColumn(name = "condition_id")
+    @JoinColumn(name = "condition_id", nullable = false)
     private Condition condition;
 }
