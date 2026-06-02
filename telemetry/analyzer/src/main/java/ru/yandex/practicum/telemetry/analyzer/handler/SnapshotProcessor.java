@@ -43,6 +43,7 @@ public class SnapshotProcessor {
     }
 
     public void start() {
+        Runtime.getRuntime().addShutdownHook(new Thread(snapshotConsumer::wakeup));
         try {
             snapshotConsumer.subscribe(List.of(snapshotsTopic));
             log.info("SnapshotProcessor subscribed to topic: {}", snapshotsTopic);
