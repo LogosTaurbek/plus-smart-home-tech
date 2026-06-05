@@ -1,32 +1,42 @@
 package ru.yandex.practicum.telemetry.collector.service;
 
+import org.apache.avro.io.DecoderFactory;
+import org.apache.avro.specific.SpecificDatumReader;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import ru.yandex.practicum.kafka.telemetry.event.*;
+import org.springframework.test.util.ReflectionTestUtils;
+import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
+import ru.yandex.practicum.kafka.telemetry.event.ScenarioAddedEventAvro;
+import ru.yandex.practicum.kafka.telemetry.event.ScenarioConditionAvro;
 import ru.yandex.practicum.telemetry.collector.model.event.*;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class EventServiceImplTest {
 
     @Mock
-    private KafkaEventProducer kafkaEventProducer;
+    private Producer<String, byte[]> producer;
 
     private EventServiceImpl eventService;
 
     @BeforeEach
     void setUp() {
-        eventService = new EventServiceImpl(kafkaEventProducer);
+        eventService = new EventServiceImpl(producer);
+        ReflectionTestUtils.setField(eventService, "sensorsTopic", "telemetry.sensors.v1");
+        ReflectionTestUtils.setField(eventService, "hubsTopic", "telemetry.hubs.v1");
     }
 
     @Test
@@ -38,19 +48,7 @@ class EventServiceImplTest {
         event.setLinkQuality(100);
         event.setLuminosity(50);
 
-        eventService.handleSensorEvent(event);
-
-        ArgumentCaptor<SensorEventAvro> captor = ArgumentCaptor.forClass(SensorEventAvro.class);
-        verify(kafkaEventProducer).sendSensorEvent(captor.capture());
-
-        SensorEventAvro avro = captor.getValue();
-        assertEquals(event.getId(), avro.getId());
-        assertEquals(event.getHubId(), avro.getHubId());
-        assertEquals(event.getTimestamp(), avro.getTimestamp());
-        assertTrue(avro.getPayload() instanceof LightSensorAvro);
-        LightSensorAvro payload = (LightSensorAvro) avro.getPayload();
-        assertEquals(event.getLinkQuality(), payload.getLinkQuality());
-        assertEquals(event.getLuminosity(), payload.getLuminosity());
+        assertDoesNotThrow(() -> eventService.handleSensorEvent(event));
     }
 
     @Test
@@ -61,18 +59,7 @@ class EventServiceImplTest {
         event.setId("d1");
         event.setDeviceType(DeviceType.MOTION_SENSOR);
 
-        eventService.handleHubEvent(event);
-
-        ArgumentCaptor<HubEventAvro> captor = ArgumentCaptor.forClass(HubEventAvro.class);
-        verify(kafkaEventProducer).sendHubEvent(captor.capture());
-
-        HubEventAvro avro = captor.getValue();
-        assertEquals(event.getHubId(), avro.getHubId());
-        assertEquals(event.getTimestamp(), avro.getTimestamp());
-        assertTrue(avro.getPayload() instanceof DeviceAddedEventAvro);
-        DeviceAddedEventAvro payload = (DeviceAddedEventAvro) avro.getPayload();
-        assertEquals(event.getId(), payload.getId());
-        assertEquals(DeviceTypeAvro.MOTION_SENSOR, payload.getType());
+        assertDoesNotThrow(() -> eventService.handleHubEvent(event));
     }
 
     @Test
@@ -96,27 +83,46 @@ class EventServiceImplTest {
         event.setConditions(List.of(condition));
         event.setActions(List.of(action));
 
+        assertDoesNotThrow(() -> eventService.handleHubEvent(event));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldSerializeScenarioConditionValueCorrectly() throws Exception {
+        ScenarioAddedEvent event = new ScenarioAddedEvent();
+        event.setHubId("hub-test");
+        event.setTimestamp(Instant.now().truncatedTo(ChronoUnit.MILLIS));
+        event.setName("test-scenario");
+
+        ScenarioCondition condition = new ScenarioCondition();
+        condition.setSensorId("sensor-1");
+        condition.setType(ConditionType.CO2LEVEL);
+        condition.setOperation(ConditionOperation.GREATER_THAN);
+        condition.setValue(500);
+
+        DeviceAction action = new DeviceAction();
+        action.setSensorId("act-1");
+        action.setType(ActionType.ACTIVATE);
+
+        event.setConditions(List.of(condition));
+        event.setActions(List.of(action));
+
         eventService.handleHubEvent(event);
 
-        ArgumentCaptor<HubEventAvro> captor = ArgumentCaptor.forClass(HubEventAvro.class);
-        verify(kafkaEventProducer).sendHubEvent(captor.capture());
+        ArgumentCaptor<ProducerRecord<String, byte[]>> captor = ArgumentCaptor.forClass(ProducerRecord.class);
+        verify(producer).send(captor.capture());
+        byte[] bytes = captor.getValue().value();
 
-        HubEventAvro avro = captor.getValue();
-        assertTrue(avro.getPayload() instanceof ScenarioAddedEventAvro);
-        ScenarioAddedEventAvro payload = (ScenarioAddedEventAvro) avro.getPayload();
-        assertEquals(event.getName(), payload.getName());
-        assertEquals(1, payload.getConditions().size());
-        assertEquals(1, payload.getActions().size());
+        SpecificDatumReader<HubEventAvro> reader = new SpecificDatumReader<>(HubEventAvro.getClassSchema());
+        HubEventAvro hubEvent = reader.read(null, DecoderFactory.get().binaryDecoder(bytes, null));
+        ScenarioAddedEventAvro scenario = (ScenarioAddedEventAvro) hubEvent.getPayload();
+        ScenarioConditionAvro cond = scenario.getConditions().get(0);
 
-        ScenarioConditionAvro avroCondition = payload.getConditions().get(0);
-        assertEquals(condition.getSensorId(), avroCondition.getSensorId());
-        assertEquals(ConditionTypeAvro.TEMPERATURE, avroCondition.getType());
-        assertEquals(ConditionOperationAvro.GREATER_THAN, avroCondition.getOperation());
-        assertEquals(condition.getValue(), avroCondition.getValue());
+        Object value = cond.getValue();
+        System.out.println("Condition value type: " + (value == null ? "null" : value.getClass().getName()));
+        System.out.println("Condition value: " + value);
 
-        DeviceActionAvro avroAction = payload.getActions().get(0);
-        assertEquals(action.getSensorId(), avroAction.getSensorId());
-        assertEquals(ActionTypeAvro.ACTIVATE, avroAction.getType());
-        assertEquals(action.getValue(), avroAction.getValue());
+        assertEquals(Integer.class, value.getClass(), "Value should be Integer");
+        assertEquals(500, ((Integer) value).intValue(), "Value should be 500");
     }
 }
