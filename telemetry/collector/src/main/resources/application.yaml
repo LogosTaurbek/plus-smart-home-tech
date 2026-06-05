@@ -1,19 +1,11 @@
-server:
-  port: 8080
-
 spring:
   application:
-    name: telemetry-collector
-
-collector:
-  grpc:
-    port: 59091
-  kafka:
-    bootstrap-servers: localhost:9092
-    topics:
-      sensors: telemetry.sensors.v1
-      hubs: telemetry.hubs.v1
-
-grpc:
-  server:
-    port: 59091
+    name: collector
+  config:
+    import: configserver:http://localhost:8888
+  cloud:
+    config:
+      fail-fast: true
+      retry:
+        useRandomPolicy: true
+        max-interval: 6000

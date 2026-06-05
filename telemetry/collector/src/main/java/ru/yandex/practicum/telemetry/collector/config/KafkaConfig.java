@@ -5,16 +5,18 @@ import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.Properties;
 
 @Configuration
+@ConfigurationProperties(prefix = "collector.kafka")
+@Setter
 public class KafkaConfig {
 
-    @Value("${collector.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
     @Bean(destroyMethod = "close")
