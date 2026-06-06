@@ -93,6 +93,7 @@ public class AggregationStarter {
                         .build()
         );
 
+
         SensorStateAvro oldState = snapshot.getSensorsState().get(sensorId);
 
         if (oldState != null) {
