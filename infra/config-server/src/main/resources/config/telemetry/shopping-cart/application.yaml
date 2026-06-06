@@ -1,0 +1,14 @@
+server:
+  port: 0
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/shopping_cart
+    username: shopping_cart
+    password: shopping_cart
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+  liquibase:
+    change-log: classpath:db/changelog/changelog-master.xml

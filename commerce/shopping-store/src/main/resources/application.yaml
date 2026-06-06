@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: shopping-store
+  config:
+    import: "optional:configserver:"
+  cloud:
+    config:
+      enabled: false
+      discovery:
+        enabled: false
+      fail-fast: false
+      request-connect-timeout: 1000
+      request-read-timeout: 1000
+  datasource:
+    url: jdbc:postgresql://localhost:5432/shopping_store
+    username: shopping_store
+    password: shopping_store
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+  liquibase:
+    change-log: classpath:db/changelog/changelog-master.xml
+
+eureka:
+  client:
+    enabled: false
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/

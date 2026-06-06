@@ -3,7 +3,17 @@ server:
 
 spring:
   application:
-    name: telemetry-collector
+    name: collector
+  config:
+    import: "optional:configserver:"
+  cloud:
+    config:
+      enabled: false
+      discovery:
+        enabled: false
+      fail-fast: false
+      request-connect-timeout: 1000
+      request-read-timeout: 1000
 
 collector:
   grpc:
@@ -17,3 +27,9 @@ collector:
 grpc:
   server:
     port: 59091
+
+eureka:
+  client:
+    enabled: false
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/

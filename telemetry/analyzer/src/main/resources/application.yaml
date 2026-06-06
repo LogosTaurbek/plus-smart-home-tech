@@ -1,6 +1,16 @@
 spring:
   application:
-    name: telemetry-analyzer
+    name: analyzer
+  config:
+    import: "optional:configserver:"
+  cloud:
+    config:
+      enabled: false
+      discovery:
+        enabled: false
+      fail-fast: false
+      request-connect-timeout: 1000
+      request-read-timeout: 1000
   datasource:
     url: jdbc:postgresql://localhost:5432/analyzer
     username: analyzer
@@ -31,3 +41,9 @@ grpc:
       enableKeepAlive: true
       keepAliveWithoutCalls: true
       negotiationType: plaintext
+
+eureka:
+  client:
+    enabled: false
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/

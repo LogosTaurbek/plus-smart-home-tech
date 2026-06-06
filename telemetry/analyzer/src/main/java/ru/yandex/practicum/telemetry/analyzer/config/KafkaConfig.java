@@ -4,7 +4,9 @@ import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
@@ -14,22 +16,25 @@ import ru.yandex.practicum.telemetry.analyzer.serialization.SensorsSnapshotDeser
 import java.util.Properties;
 
 @Configuration
+@ConfigurationProperties(prefix = "analyzer.kafka")
+@Setter
 public class KafkaConfig {
 
-    @Value("${analyzer.kafka.bootstrap-servers}")
     private String bootstrapServers;
+    private Consumer consumer;
 
-    @Value("${analyzer.kafka.consumer.hub-group-id}")
-    private String hubGroupId;
-
-    @Value("${analyzer.kafka.consumer.snapshot-group-id}")
-    private String snapshotGroupId;
+    @Getter
+    @Setter
+    public static class Consumer {
+        private String hubGroupId;
+        private String snapshotGroupId;
+    }
 
     @Bean
     public KafkaConsumer<String, SpecificRecordBase> hubConsumer() {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, hubGroupId);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumer.getHubGroupId());
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, HubEventDeserializer.class.getName());
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
@@ -41,7 +46,7 @@ public class KafkaConfig {
     public KafkaConsumer<String, SensorsSnapshotAvro> snapshotConsumer() {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, snapshotGroupId);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumer.getSnapshotGroupId());
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, SensorsSnapshotDeserializer.class.getName());
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
