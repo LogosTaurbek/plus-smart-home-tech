@@ -1,6 +1,8 @@
 spring:
   application:
     name: shopping-cart
+  config:
+    import: configserver:
   cloud:
     config:
       discovery:

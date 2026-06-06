@@ -1,6 +1,8 @@
 spring:
   application:
     name: analyzer
+  config:
+    import: configserver:
   cloud:
     config:
       discovery:

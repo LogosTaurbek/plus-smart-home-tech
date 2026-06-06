@@ -1,6 +1,8 @@
 spring:
   application:
     name: collector
+  config:
+    import: configserver:
   cloud:
     config:
       discovery:
