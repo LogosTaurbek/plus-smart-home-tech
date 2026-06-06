@@ -42,6 +42,7 @@ public class AggregationStarter {
     private final Map<String, SensorsSnapshotAvro> snapshots = new HashMap<>();
 
     public void start() {
+        Runtime.getRuntime().addShutdownHook(new Thread(consumer::wakeup));
         try {
             consumer.subscribe(List.of(sensorsTopic));
             log.info("Aggregator started. Subscribed to topic: {}", sensorsTopic);
