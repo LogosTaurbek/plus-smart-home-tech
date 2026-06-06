@@ -24,6 +24,7 @@ public class ShoppingCartService {
 
     @Transactional
     public ShoppingCartDto getShoppingCart(String username) {
+        log.info("Retrieving shopping cart for user: {}", username);
         Cart cart = cartRepository.findByUsernameAndActive(username, true)
                 .orElseGet(() -> cartRepository.save(Cart.builder()
                         .username(username)
