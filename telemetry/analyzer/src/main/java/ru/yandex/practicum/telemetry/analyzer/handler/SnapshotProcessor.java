@@ -52,14 +52,12 @@ public class SnapshotProcessor {
                 ConsumerRecords<String, SensorsSnapshotAvro> records =
                         snapshotConsumer.poll(Duration.ofSeconds(1));
 
-                boolean hasScenarios = false;
                 for (ConsumerRecord<String, SensorsSnapshotAvro> record : records) {
-                    if (processSnapshot(record.value())) {
-                        hasScenarios = true;
-                    }
+                    log.info("Processing snapshot for hub: {}", record.value().getHubId());
+                    processSnapshot(record.value());
                 }
 
-                if (!records.isEmpty() && hasScenarios) {
+                if (!records.isEmpty()) {
                     snapshotConsumer.commitSync();
                 }
             }
@@ -88,14 +86,24 @@ public class SnapshotProcessor {
                 .build();
 
         for (Scenario scenario : scenarios) {
-            if (scenario.getConditions().isEmpty()) continue;
+            log.info("Checking scenario [{}] for hub {}", scenario.getName(), hubId);
+            if (scenario.getConditions().isEmpty()) {
+                log.warn("Scenario [{}] has no conditions!", scenario.getName());
+                continue;
+            }
 
             boolean allConditionsMet = scenario.getConditions().stream()
-                    .allMatch(sc -> checkCondition(sc, sensorsState));
+                    .allMatch(sc -> {
+                        boolean met = checkCondition(sc, sensorsState);
+                        log.debug("Condition for sensor {} met: {}", sc.getSensor().getId(), met);
+                        return met;
+                    });
 
             if (allConditionsMet) {
                 log.info("Scenario [{}] conditions met for hub {}", scenario.getName(), hubId);
                 executeActions(scenario, timestamp);
+            } else {
+                log.info("Scenario [{}] conditions NOT met for hub {}", scenario.getName(), hubId);
             }
         }
         return true;
