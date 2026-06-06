@@ -12,6 +12,16 @@ spring:
       retry:
         useRandomPolicy: true
         max-interval: 6000
+  datasource:
+    url: jdbc:postgresql://localhost:5432/commerce
+    username: commerce
+    password: commerce
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+  liquibase:
+    change-log: classpath:db/changelog/changelog-master.xml
 
 eureka:
   client:

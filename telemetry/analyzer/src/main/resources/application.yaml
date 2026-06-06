@@ -12,6 +12,36 @@ spring:
       retry:
         useRandomPolicy: true
         max-interval: 6000
+  datasource:
+    url: jdbc:postgresql://localhost:5432/analyzer
+    username: analyzer
+    password: analyzer
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+  liquibase:
+    change-log: classpath:db/changelog/changelog.xml
+
+analyzer:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      hub-group-id: telemetry-analyzer-hub
+      snapshot-group-id: telemetry-analyzer-snapshot
+    topics:
+      hubs: telemetry.hubs.v1
+      snapshots: telemetry.snapshots.v1
+
+grpc:
+  server:
+    port: -1
+  client:
+    hub-router:
+      address: 'static://localhost:59090'
+      enableKeepAlive: true
+      keepAliveWithoutCalls: true
+      negotiationType: plaintext
 
 eureka:
   client:
