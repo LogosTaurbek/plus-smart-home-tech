@@ -3,6 +3,8 @@ package ru.yandex.practicum.commerce.shoppingstore.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import ru.yandex.practicum.commerce.api.model.ProductDto;
 import ru.yandex.practicum.commerce.api.model.enums.ProductCategory;
 import ru.yandex.practicum.commerce.api.model.enums.ProductState;
@@ -11,9 +13,7 @@ import ru.yandex.practicum.commerce.shoppingstore.mapper.ProductMapper;
 import ru.yandex.practicum.commerce.shoppingstore.model.Product;
 import ru.yandex.practicum.commerce.shoppingstore.repository.ProductRepository;
 
-import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -21,10 +21,16 @@ public class ShoppingStoreService {
     private final ProductRepository productRepository;
 
     @Transactional(readOnly = true)
-    public List<ProductDto> getProducts(ProductCategory category) {
-        return productRepository.findAllByProductCategory(category).stream()
+    public Page<ProductDto> getProducts(ProductCategory category, Pageable pageable) {
+        return productRepository.findAllByProductCategory(category, pageable)
+                .map(ProductMapper::toDto);
+    }
+
+    @Transactional(readOnly = true)
+    public ProductDto getProduct(UUID productId) {
+        return productRepository.findById(productId)
                 .map(ProductMapper::toDto)
-                .collect(Collectors.toList());
+                .orElseThrow(() -> new RuntimeException("Product not found"));
     }
 
     @Transactional

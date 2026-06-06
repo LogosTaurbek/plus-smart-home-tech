@@ -13,7 +13,14 @@ import java.util.UUID;
 public interface ShoppingStoreClient {
 
     @GetMapping
-    List<ProductDto> getProducts(@RequestParam ProductCategory category);
+    Object getProducts(
+            @RequestParam ProductCategory category,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam List<String> sort);
+
+    @GetMapping("/{productId}")
+    ProductDto getProduct(@PathVariable UUID productId);
 
     @PutMapping
     ProductDto createNewProduct(@RequestBody ProductDto productDto);
@@ -21,9 +28,9 @@ public interface ShoppingStoreClient {
     @PostMapping
     ProductDto updateProduct(@RequestBody ProductDto productDto);
 
-    @PostMapping("/remove")
+    @PostMapping("/removeProductFromStore")
     boolean removeProductFromStore(@RequestParam UUID productId);
 
-    @PostMapping("/quantity")
+    @PostMapping("/quantityState")
     boolean setProductQuantityState(@RequestParam UUID productId, @RequestParam QuantityState quantityState);
 }
