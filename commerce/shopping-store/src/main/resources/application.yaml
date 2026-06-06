@@ -12,9 +12,9 @@ spring:
       request-connect-timeout: 1000
       request-read-timeout: 1000
   datasource:
-    url: jdbc:postgresql://localhost:5432/commerce
-    username: commerce
-    password: commerce
+    url: jdbc:postgresql://localhost:5432/shopping_store
+    username: shopping_store
+    password: shopping_store
   jpa:
     hibernate:
       ddl-auto: none

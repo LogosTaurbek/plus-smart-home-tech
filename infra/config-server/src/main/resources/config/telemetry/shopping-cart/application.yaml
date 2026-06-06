@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/commerce
-    username: commerce
-    password: commerce
+    url: jdbc:postgresql://localhost:5432/shopping_cart
+    username: shopping_cart
+    password: shopping_cart
   jpa:
     hibernate:
       ddl-auto: none
