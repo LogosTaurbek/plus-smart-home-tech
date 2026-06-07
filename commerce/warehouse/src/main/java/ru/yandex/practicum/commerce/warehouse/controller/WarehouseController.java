@@ -6,6 +6,9 @@ import ru.yandex.practicum.commerce.api.client.WarehouseClient;
 import ru.yandex.practicum.commerce.api.model.*;
 import ru.yandex.practicum.commerce.warehouse.service.WarehouseService;
 
+import java.util.Map;
+import java.util.UUID;
+
 @RestController
 @RequiredArgsConstructor
 public class WarehouseController implements WarehouseClient {
