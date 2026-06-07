@@ -29,6 +29,25 @@
                 <constraints nullable="false"/>
             </column>
         </createTable>
+
+        <createTable tableName="order_bookings">
+            <column name="order_id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="delivery_id" type="UUID"/>
+        </createTable>
+
+        <createTable tableName="order_booking_products">
+            <column name="order_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_booking_products_order" referencedTableName="order_bookings" referencedColumnNames="order_id"/>
+            </column>
+            <column name="product_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantity" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
     </changeSet>
 
 </databaseChangeLog>

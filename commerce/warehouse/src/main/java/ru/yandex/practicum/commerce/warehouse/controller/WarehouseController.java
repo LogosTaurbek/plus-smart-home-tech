@@ -30,4 +30,19 @@ public class WarehouseController implements WarehouseClient {
     public AddressDto getWarehouseAddress() {
         return warehouseService.getWarehouseAddress();
     }
+
+    @Override
+    public BookedProductsDto assemblyProductsForOrder(AssemblyProductsForOrderRequest request) {
+        return warehouseService.assemblyProductsForOrder(request);
+    }
+
+    @Override
+    public void shippedToDelivery(ShippedToDeliveryRequest request) {
+        warehouseService.shippedToDelivery(request);
+    }
+
+    @Override
+    public void acceptReturn(Map<UUID, Long> products) {
+        warehouseService.acceptReturn(products);
+    }
 }
